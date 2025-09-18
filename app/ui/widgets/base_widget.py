@@ -307,7 +307,7 @@ class BaseWidget(QFrame):
             # If the widget is being minimized for the first time, or original size is not set, store current size.
             if not self._original_size.isValid():
                 self._original_size = self.size()
-
+            
             self.content_widget.hide()
             self.minimized_widget.show()
 
@@ -366,7 +366,7 @@ class BaseWidget(QFrame):
             new_width = round(self.width() / grid_size) * grid_size
             new_height = round(self.height() / grid_size) * grid_size
             self.resize(new_width, new_height)
-
+            
             # If minimized, save this new size as the preferred minimized size.
             if self.is_minimized:
                 self._minimized_size = self.size()
