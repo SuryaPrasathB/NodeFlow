@@ -248,6 +248,17 @@ class BaseWidget(QFrame):
             minimize_action = QAction("Minimize", self)
             minimize_action.triggered.connect(self.toggle_minimize_state)
             context_menu.addAction(minimize_action)
+
+        context_menu.addSeparator()
+
+        front_action = QAction("Bring to Front", self)
+        front_action.triggered.connect(self.bring_to_front)
+        context_menu.addAction(front_action)
+
+        back_action = QAction("Send to Back", self)
+        back_action.triggered.connect(self.send_to_back)
+        context_menu.addAction(back_action)
+
         context_menu.addSeparator()
         copy_action = QAction("Copy", self)
         copy_action.triggered.connect(lambda: self.request_copy.emit(self.config))
@@ -260,6 +271,14 @@ class BaseWidget(QFrame):
         delete_action.triggered.connect(lambda: self.request_delete.emit(self))
         context_menu.addAction(delete_action)
         context_menu.exec(event.globalPos())
+
+    def bring_to_front(self):
+        self.raise_()
+        self.state_changed.emit(self.is_minimized)
+
+    def send_to_back(self):
+        self.lower()
+        self.state_changed.emit(self.is_minimized)
 
     def toggle_minimize_state(self):
         self.is_minimized = not self.is_minimized
