@@ -16,10 +16,10 @@ from enum import Enum
 from PyQt6.QtWidgets import (QGraphicsView, QGraphicsScene, QGraphicsObject, QGraphicsTextItem,
                              QStyleOptionGraphicsItem, QWidget, QGraphicsPathItem, QStyle,
                              QInputDialog, QLineEdit, QDialog, QFormLayout, QDialogButtonBox, QVBoxLayout, QMenu,
-                             QComboBox, QGraphicsProxyWidget, QToolTip, QColorDialog)
+                             QComboBox, QGraphicsProxyWidget, QToolTip, QColorDialog, QPushButton)
 from PyQt6.QtCore import Qt, QRectF, QPointF, pyqtSignal, QObject, QPropertyAnimation
 from PyQt6.QtGui import (QPainter, QColor, QBrush, QPen, QPainterPath, QKeyEvent, 
-                         QPainterPathStroker, QUndoCommand, QUndoStack, QFont, QTransform, QAction)
+                         QPainterPathStroker, QUndoCommand, QUndoStack, QFont, QTransform, QAction, QIcon)
 
 # --- Local Imports ---
 from .condition_dialog import ConditionDialog
@@ -27,6 +27,7 @@ from .node_config_dialog import NodeConfigDialog
 from .compute_node_dialog import ComputeNodeDialog
 from .error_dialog import show_error_message
 from app.ui.widgets.find_widget import FindWidget
+from app.utils.paths import resource_path
 
 class DebugState(Enum):
     IDLE = 0
@@ -1339,7 +1340,6 @@ class SequenceNode(QGraphicsObject):
         path.addRoundedRect(self.boundingRect(), 10, 10)
 
         node_type = self.config.get('node_type')
-        
         # --- Custom Color Logic ---
         if 'custom_color' in self.config:
             base_color = self.config['custom_color']
@@ -1694,7 +1694,6 @@ class SequenceScene(QGraphicsScene):
             toggle_breakpoint_action = menu.addAction("Toggle Breakpoint")
             change_color_action = menu.addAction("Change Color...")
             menu.addSeparator()
-            
             action = menu.exec(event.screenPos())
 
             if action == toggle_breakpoint_action:
@@ -1708,7 +1707,6 @@ class SequenceScene(QGraphicsScene):
         """Opens a color dialog and sets the custom color for the given node."""
         current_color = QColor(node.config.get('custom_color', '#3c3f41'))
         color = QColorDialog.getColor(current_color, self.views()[0], "Choose Node Color")
-        
         if color.isValid():
             node.config['custom_color'] = color.name()
             node.update() # Repaint the node
@@ -1949,6 +1947,9 @@ class Minimap(QGraphicsView):
         self.main_view = main_view
         self.setScene(self.main_view.scene)
         self._is_panning = False
+        self._is_dragging_viewport = False
+        self._drag_start_pos = QPointF()
+
 
         self.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.setInteractive(True)
@@ -1956,42 +1957,63 @@ class Minimap(QGraphicsView):
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setStyleSheet("border: 1px solid #555;") # Add a border for visibility
 
+
+    def get_viewport_polygon(self):
+        """Calculates and returns the viewport polygon in minimap coordinates."""
+        main_viewport_rect = self.main_view.viewport().rect()
+        visible_scene_poly = self.main_view.mapToScene(main_viewport_rect)
+        return self.mapFromScene(visible_scene_poly)
+
     def drawForeground(self, painter, rect):
         super().drawForeground(painter, rect)
-        
-        # Get the visible rectangle of the main view
-        main_viewport_rect = self.main_view.viewport().rect()
-        
-        # Map the rectangle from the main view's viewport coordinates to scene coordinates
-        visible_scene_poly = self.main_view.mapToScene(main_viewport_rect)
-        
-        # Map the scene polygon to this minimap's viewport coordinates
-        minimap_viewport_poly = self.mapFromScene(visible_scene_poly)
-        
-        painter.setPen(QPen(QColor(255, 255, 255, 128), 2))
-        painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
+        minimap_viewport_poly = self.get_viewport_polygon()
+
+        painter.setPen(QPen(QColor(255, 255, 255, 128), 1))
+        painter.setBrush(QBrush(QColor(255, 255, 255, 70)))
         painter.drawPolygon(minimap_viewport_poly)
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
-            self._is_panning = True
-            scene_pos = self.mapToScene(event.pos())
-            self.main_view.centerOn(scene_pos)
+            viewport_poly = self.get_viewport_polygon()
+            if viewport_poly.containsPoint(event.pos(), Qt.FillRule.WindingFill):
+                self._is_dragging_viewport = True
+                self._drag_start_pos = event.pos()
+            else:
+                self._is_panning = True
+                scene_pos = self.mapToScene(event.pos())
+                self.main_view.centerOn(scene_pos)
             event.accept()
         else:
             super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
-        if self._is_panning:
+        if self._is_dragging_viewport:
+            delta = event.pos() - self._drag_start_pos
+
+            # Map the delta from minimap coordinates to scene coordinates
+            # We map two points and find the difference to account for scaling/rotation
+            scene_p1 = self.mapToScene(self._drag_start_pos)
+            scene_p2 = self.mapToScene(event.pos())
+            scene_delta = scene_p2 - scene_p1
+
+            current_center = self.main_view.mapToScene(self.main_view.viewport().rect().center())
+            new_center = current_center - scene_delta
+
+            self.main_view.centerOn(new_center)
+
+            # Update the start position for the next move event
+            self._drag_start_pos = event.pos()
+
+        elif self._is_panning:
             scene_pos = self.mapToScene(event.pos())
             self.main_view.centerOn(scene_pos)
-            event.accept()
-        else:
-            super().mouseMoveEvent(event)
+
+        event.accept()
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             self._is_panning = False
+            self._is_dragging_viewport = False
             event.accept()
         else:
             super().mouseReleaseEvent(event)
@@ -2031,6 +2053,14 @@ class SequenceEditor(QGraphicsView):
         self.minimap = Minimap(self)
         self.horizontalScrollBar().valueChanged.connect(self.minimap.update)
         self.verticalScrollBar().valueChanged.connect(self.minimap.update)
+        # --- Minimap Toggle Button ---
+        self.minimap_toggle_button = QPushButton(self)
+        # Using placeholder icons as the requested ones were not found
+        self.icon_show_minimap = QIcon(resource_path('app/resources/icons/right_arrow.png'))
+        self.icon_hide_minimap = QIcon(resource_path('app/resources/icons/left_arrow.png'))
+        self.minimap_toggle_button.setIcon(self.icon_hide_minimap)
+        self.minimap_toggle_button.setFixedSize(30, 30)
+        self.minimap_toggle_button.clicked.connect(self.toggle_minimap_visibility)
         
     def get_selected_nodes_data(self):
         """Returns a list of serialized data for all selected SequenceNode items."""
@@ -2151,6 +2181,15 @@ class SequenceEditor(QGraphicsView):
             return True
         return False
 
+    def toggle_minimap_visibility(self):
+        """Shows or hides the minimap and updates the toggle button's icon."""
+        if self.minimap.isVisible():
+            self.minimap.hide()
+            self.minimap_toggle_button.setIcon(self.icon_show_minimap)
+        else:
+            self.minimap.show()
+            self.minimap_toggle_button.setIcon(self.icon_hide_minimap)
+
     def resizeEvent(self, event):
         """Ensure the find widget stays in the top-right corner."""
         super().resizeEvent(event)
@@ -2167,6 +2206,11 @@ class SequenceEditor(QGraphicsView):
                 minimap_size
             )
             self.minimap.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+            
+        if self.minimap_toggle_button:
+            button_size = self.minimap_toggle_button.height()
+            self.minimap_toggle_button.move(10, self.height() - button_size - 10)
+
 
     def show_find_widget(self):
         """Shows and focuses the find widget in the top-right corner of the tab content area."""
