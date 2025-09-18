@@ -1969,7 +1969,7 @@ class Minimap(QGraphicsView):
         minimap_viewport_poly = self.mapFromScene(visible_scene_poly)
         
         painter.setPen(QPen(QColor(255, 255, 255, 128), 2))
-        painter.setBrush(QBrush(Qt.NoBrush))
+        painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
         painter.drawPolygon(minimap_viewport_poly)
 
     def mousePressEvent(self, event):
