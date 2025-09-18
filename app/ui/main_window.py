@@ -1410,11 +1410,13 @@ class MainWindow(QMainWindow):
             self.tab_widget.setCurrentWidget(self.sequencer_tab_container)
         
         # --- Create a new engine for this run ---
-        engine = SequenceEngine(data, self.opcua_logic, self, self.global_variables)
-        engine.sequence_finished.connect(self.on_sequence_finished)
+        engine = SequenceEngine(self.opcua_logic, self.async_runner, self.global_variables)
+        engine.execution_finished.connect(self.on_sequence_finished)
+
         # Connect UI update signals
-        engine.node_activated.connect(lambda uuid: self.on_node_state_changed(name, uuid, "active"))
-        engine.node_deactivated.connect(lambda uuid: self.on_node_state_changed(name, uuid, "idle"))
+        engine.node_state_changed.connect(self.on_node_state_changed)
+        engine.connection_state_changed.connect(self.on_connection_state_changed)
+        engine.execution_paused.connect(self.on_sequence_paused)
 
         self.running_sequences[name] = engine
         
@@ -1424,7 +1426,7 @@ class MainWindow(QMainWindow):
                 if isinstance(widget, SequenceWidget) and widget.sequence_name == name:
                     widget.set_running_state(True, is_loop)
         
-        self.async_runner.submit(engine.run_sequence(in_loop=is_loop))
+        engine.run(name, self.sequences, loop=is_loop)
         logging.info(f"Started sequence '{name}' (Loop: {is_loop})")
         self._set_running_toolbar_state()
 
