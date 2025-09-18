@@ -16,7 +16,7 @@ from enum import Enum
 from PyQt6.QtWidgets import (QGraphicsView, QGraphicsScene, QGraphicsObject, QGraphicsTextItem,
                              QStyleOptionGraphicsItem, QWidget, QGraphicsPathItem, QStyle,
                              QInputDialog, QLineEdit, QDialog, QFormLayout, QDialogButtonBox, QVBoxLayout, QMenu,
-                             QComboBox, QGraphicsProxyWidget, QToolTip)
+                             QComboBox, QGraphicsProxyWidget, QToolTip, QColorDialog)
 from PyQt6.QtCore import Qt, QRectF, QPointF, pyqtSignal, QObject, QPropertyAnimation
 from PyQt6.QtGui import (QPainter, QColor, QBrush, QPen, QPainterPath, QKeyEvent, 
                          QPainterPathStroker, QUndoCommand, QUndoStack, QFont, QTransform, QAction)
@@ -1339,15 +1339,21 @@ class SequenceNode(QGraphicsObject):
         path.addRoundedRect(self.boundingRect(), 10, 10)
 
         node_type = self.config.get('node_type')
-        base_color = "#3c3f41"
-        if node_type == NodeType.METHOD_CALL.value: base_color = "#2E4053"
-        elif node_type == NodeType.DELAY.value: base_color = "#483D8B"
-        elif node_type == NodeType.WRITE_VALUE.value: base_color = "#556B2F"
-        elif node_type == NodeType.STATIC_VALUE.value: base_color = "#006464"
-        elif node_type == NodeType.RUN_SEQUENCE.value: base_color = "#6A1B9A"
-        elif node_type == NodeType.FOR_LOOP.value: base_color = "#8B4513"
-        elif node_type == NodeType.WHILE_LOOP.value: base_color = "#1E8449"
-        elif node_type == NodeType.COMPUTE.value: base_color = "#BF360C" # NEW COLOR
+
+        # --- Custom Color Logic ---
+        if 'custom_color' in self.config:
+            base_color = self.config['custom_color']
+        else:
+            # Default color scheme
+            base_color = "#3c3f41"
+            if node_type == NodeType.METHOD_CALL.value: base_color = "#2E4053"
+            elif node_type == NodeType.DELAY.value: base_color = "#483D8B"
+            elif node_type == NodeType.WRITE_VALUE.value: base_color = "#556B2F"
+            elif node_type == NodeType.STATIC_VALUE.value: base_color = "#006464"
+            elif node_type == NodeType.RUN_SEQUENCE.value: base_color = "#6A1B9A"
+            elif node_type == NodeType.FOR_LOOP.value: base_color = "#8B4513"
+            elif node_type == NodeType.WHILE_LOOP.value: base_color = "#1E8449"
+            elif node_type == NodeType.COMPUTE.value: base_color = "#BF360C"
 
         state_colors = {"running": "#f0e68c", "success": "#90ee90", "failed": "#ff6347", "paused": "#6495ED"}
         color = state_colors.get(self.state, base_color if not self.isSelected() else "#5a98d1")
@@ -1530,8 +1536,9 @@ class DeleteItemsCommand(QUndoCommand):
                     data['end_socket_label'] = item.end_socket.label if hasattr(item.end_socket, 'label') else None
                 else:
                     data['end_socket_label'] = None
-                if item.control_point:
-                    data['control_point'] = item.control_point
+                data['h_control_y1'] = item.h_control_y1
+                data['h_control_y2'] = item.h_control_y2
+                data['v_control_x'] = item.v_control_x
             
             # Only add items that could be serialized
             if 'type' in data:
@@ -1592,9 +1599,10 @@ class DeleteItemsCommand(QUndoCommand):
                         end_socket = end_node.data_in_socket
                     
                     if start_node.data_out_socket and end_socket:
-                        conn = DataConnection(start_node.data_out_socket, end_socket, self.scene)
-                        if 'control_point' in data:
-                            conn.control_point = data.get('control_point')
+                        conn = DataConnection(start_node.data_out_socket, end_socket, self.scene, data.get('uuid'))
+                        conn.h_control_y1 = data.get('h_control_y1')
+                        conn.h_control_y2 = data.get('h_control_y2')
+                        conn.v_control_x = data.get('v_control_x')
                         conn.update_path()
                         self.scene.addItem(conn)
                         data['item'] = conn
@@ -1684,12 +1692,28 @@ class SequenceScene(QGraphicsScene):
         # Context menu for a node
         if isinstance(item_at_pos, SequenceNode):
             toggle_breakpoint_action = menu.addAction("Toggle Breakpoint")
+            change_color_action = menu.addAction("Change Color...")
+            menu.addSeparator()
+
             action = menu.exec(event.screenPos())
+
             if action == toggle_breakpoint_action:
                 item_at_pos.toggle_breakpoint()
                 self.scene_changed.emit()
+            elif action == change_color_action:
+                self.set_node_color(item_at_pos)
             return
             
+    def set_node_color(self, node):
+        """Opens a color dialog and sets the custom color for the given node."""
+        current_color = QColor(node.config.get('custom_color', '#3c3f41'))
+        color = QColorDialog.getColor(current_color, self.views()[0], "Choose Node Color")
+
+        if color.isValid():
+            node.config['custom_color'] = color.name()
+            node.update() # Repaint the node
+            self.scene_changed.emit()
+
         # Context menu for the scene background
         add_node_menu = menu.addMenu("Add Node")
         add_method_action = add_node_menu.addAction("Method Call (from Server Browser)")
@@ -1919,6 +1943,47 @@ class SequenceScene(QGraphicsScene):
                     self.scene_changed.emit()
         super().mouseDoubleClickEvent(event)
 
+class Minimap(QGraphicsView):
+    def __init__(self, main_view):
+        super().__init__(main_view.viewport())
+        self.main_view = main_view
+        self.setScene(self.main_view.scene)
+
+        self.setRenderHint(QPainter.RenderHint.Antialiasing)
+        self.setInteractive(True)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setStyleSheet("border: 1px solid #555;") # Add a border for visibility
+
+    def drawForeground(self, painter, rect):
+        super().drawForeground(painter, rect)
+
+        # Get the visible rectangle of the main view
+        main_viewport_rect = self.main_view.viewport().rect()
+
+        # Map the rectangle from the main view's viewport coordinates to scene coordinates
+        visible_scene_poly = self.main_view.mapToScene(main_viewport_rect)
+
+        # Map the scene polygon to this minimap's viewport coordinates
+        minimap_viewport_poly = self.mapFromScene(visible_scene_poly)
+
+        painter.setPen(QPen(QColor(255, 255, 255, 128), 2))
+        painter.setBrush(QBrush(Qt.NoBrush))
+        painter.drawPolygon(minimap_viewport_poly)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            scene_pos = self.mapToScene(event.pos())
+            self.main_view.centerOn(scene_pos)
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        scene_pos = self.mapToScene(event.pos())
+        self.main_view.centerOn(scene_pos)
+        event.accept()
+
 class SequenceEditor(QGraphicsView):       
     scene_changed = pyqtSignal()    
 
@@ -1951,8 +2016,9 @@ class SequenceEditor(QGraphicsView):
         self.last_found_node = None
 
         # --- Minimap ---
-        # The minimap is currently disabled due to a persistent bug.
-        self.minimap = None
+        self.minimap = Minimap(self)
+        self.horizontalScrollBar().valueChanged.connect(self.minimap.update)
+        self.verticalScrollBar().valueChanged.connect(self.minimap.update)
         
     def get_selected_nodes_data(self):
         """Returns a list of serialized data for all selected SequenceNode items."""
@@ -2050,10 +2116,14 @@ class SequenceEditor(QGraphicsView):
     def zoom_in(self):
         """Scales the view up by 20%."""
         self.scale(1.2, 1.2)
+        if self.minimap:
+            self.minimap.update()
 
     def zoom_out(self):
         """Scales the view down by 20%."""
         self.scale(1 / 1.2, 1 / 1.2)
+        if self.minimap:
+            self.minimap.update()
 
     def reset_zoom(self):
         """Resets the view's transformation to the default state."""
@@ -2077,8 +2147,14 @@ class SequenceEditor(QGraphicsView):
         
         # Position minimap in bottom-right corner
         if self.minimap:
-            # The minimap is currently disabled due to a persistent bug.
-            pass
+            minimap_size = 200
+            self.minimap.setGeometry(
+                self.width() - minimap_size - 10,
+                self.height() - minimap_size - 10,
+                minimap_size,
+                minimap_size
+            )
+            self.minimap.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
 
     def show_find_widget(self):
         """Shows and focuses the find widget in the top-right corner of the tab content area."""
