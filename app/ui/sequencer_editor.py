@@ -1251,6 +1251,7 @@ class MinimapView(QGraphicsView):
         super().__init__(parent)
         self.main_view = main_view
         self.setScene(self.main_view.scene)
+        self.setScene(self.main_view.scene())
         self.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.setInteractive(False)
         self.visible_rect_item = QGraphicsRectItem()
