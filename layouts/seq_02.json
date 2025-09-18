@@ -1,0 +1,71 @@
+{
+    "dashboard": [
+        [
+            {
+                "config": {
+                    "widget_type": "Button",
+                    "label": "LiftDownElectroMagnet",
+                    "search_type": "By Node ID",
+                    "identifier": "ns=2;i=5012",
+                    "method_bname": "LiftDownElectroMagnet",
+                    "has_argument": false
+                },
+                "geometry": {
+                    "x": 20,
+                    "y": 100,
+                    "width": 160,
+                    "height": 60
+                },
+                "is_minimized": true,
+                "original_size": {
+                    "width": 320,
+                    "height": 180
+                }
+            },
+            {
+                "config": {
+                    "widget_type": "Button",
+                    "label": "LiftUpElectroMagnet",
+                    "search_type": "By Node ID",
+                    "identifier": "ns=2;i=5012",
+                    "method_bname": "LiftUpElectroMagnet",
+                    "has_argument": false
+                },
+                "geometry": {
+                    "x": 20,
+                    "y": 40,
+                    "width": 160,
+                    "height": 60
+                },
+                "is_minimized": true,
+                "original_size": {
+                    "width": 320,
+                    "height": 180
+                }
+            },
+            {
+                "config": {
+                    "widget_type": "Text Display",
+                    "label": "ElectroMagnetLifterPosition",
+                    "search_type": "By Node ID",
+                    "identifier": "ns=2;i=6071"
+                },
+                "geometry": {
+                    "x": 20,
+                    "y": 180,
+                    "width": 160,
+                    "height": 60
+                },
+                "is_minimized": true,
+                "original_size": {
+                    "width": 320,
+                    "height": 180
+                }
+            }
+        ]
+    ],
+    "sequencer": {
+        "nodes": [],
+        "connections": []
+    }
+}

@@ -1,0 +1,82 @@
+{
+    "dashboard": [
+        [
+            {
+                "config": {
+                    "widget_type": "Button",
+                    "label": "Who",
+                    "search_type": "By Node ID",
+                    "identifier": "ns=2;i=1",
+                    "method_bname": "Who",
+                    "has_argument": false
+                },
+                "geometry": {
+                    "x": 30,
+                    "y": 30,
+                    "width": 320,
+                    "height": 180
+                },
+                "is_minimized": false,
+                "original_size": null
+            },
+            {
+                "config": {
+                    "widget_type": "Button",
+                    "label": "Hello",
+                    "search_type": "By Node ID",
+                    "identifier": "ns=2;i=1",
+                    "method_bname": "Hello",
+                    "has_argument": false
+                },
+                "geometry": {
+                    "x": 360,
+                    "y": 40,
+                    "width": 320,
+                    "height": 180
+                },
+                "is_minimized": false,
+                "original_size": null
+            }
+        ]
+    ],
+    "sequencer": {
+        "nodes": [
+            {
+                "uuid": "677ff601-5291-41a5-b3d1-23c4da1c693f",
+                "config": {
+                    "label": "Hello",
+                    "identifier": "ns=2;i=1",
+                    "method_bname": "Hello"
+                },
+                "pos": {
+                    "x": -1505.0,
+                    "y": -619.0
+                }
+            },
+            {
+                "uuid": "52a030e5-e4d7-42d1-8f76-1e2bc9fe2fb3",
+                "config": {
+                    "label": "Who",
+                    "identifier": "ns=2;i=1",
+                    "method_bname": "Who",
+                    "has_argument": true,
+                    "argument_value": "LSCS"
+                },
+                "pos": {
+                    "x": -1140.0,
+                    "y": -575.0
+                }
+            }
+        ],
+        "connections": [
+            {
+                "start_node_uuid": "677ff601-5291-41a5-b3d1-23c4da1c693f",
+                "end_node_uuid": "52a030e5-e4d7-42d1-8f76-1e2bc9fe2fb3",
+                "condition": {
+                    "operator": "==",
+                    "value": "Hello from OPC UA Python Server!"
+                }
+            }
+        ]
+    }
+}

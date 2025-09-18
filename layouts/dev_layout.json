@@ -1,0 +1,47 @@
+[
+    [
+        {
+            "config": {
+                "widget_type": "Numerical Display",
+                "label": "Float Read",
+                "identifier": "ns=2;i=4",
+                "search_type": "By Node ID"
+            },
+            "geometry": {
+                "x": 440,
+                "y": 160,
+                "width": 160,
+                "height": 60
+            }
+        },
+        {
+            "config": {
+                "widget_type": "Numerical Display",
+                "label": "Int Read",
+                "identifier": "ns=2;i=3",
+                "search_type": "By Node ID"
+            },
+            "geometry": {
+                "x": 440,
+                "y": 240,
+                "width": 160,
+                "height": 60
+            }
+        },
+        {
+            "config": {
+                "widget_type": "Text Display",
+                "label": "String Read",
+                "identifier": "ns=2;i=2",
+                "search_type": "By Node ID"
+            },
+            "geometry": {
+                "x": 440,
+                "y": 320,
+                "width": 160,
+                "height": 60
+            }
+        }
+    ],
+    []
+]

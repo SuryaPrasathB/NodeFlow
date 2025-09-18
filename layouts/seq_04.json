@@ -1,0 +1,287 @@
+{
+    "server_url": "opc.tcp://127.0.0.1:4840/",
+    "dashboard": [
+        [
+            {
+                "config": {
+                    "widget_type": "Sequence Button",
+                    "label": "Run: Main Seq",
+                    "sequence_name": "Main Seq"
+                },
+                "geometry": {
+                    "x": 20,
+                    "y": 20,
+                    "width": 220,
+                    "height": 120
+                },
+                "is_minimized": false,
+                "original_size": null
+            }
+        ]
+    ],
+    "sequences": {
+        "Main Seq": {
+            "nodes": [
+                {
+                    "uuid": "7db5f254-c95a-4461-9132-2c375031e892",
+                    "config": {
+                        "node_type": "Delay",
+                        "label": "Delay",
+                        "delay_seconds": 2.0
+                    },
+                    "pos": {
+                        "x": 31.0,
+                        "y": -110.0
+                    },
+                    "has_breakpoint": false
+                },
+                {
+                    "uuid": "e08d1e3b-5d94-4950-bd7c-d5b206c0c2de",
+                    "config": {
+                        "label": "Who",
+                        "identifier": "ns=2;i=1",
+                        "method_bname": "Who",
+                        "node_type": "Method Call",
+                        "has_argument": true,
+                        "use_connected_input": false,
+                        "argument_value": "Looping"
+                    },
+                    "pos": {
+                        "x": 247.0,
+                        "y": -96.0
+                    },
+                    "has_breakpoint": false
+                },
+                {
+                    "uuid": "c7824eeb-60b4-4178-8c2d-dba8ee7363e4",
+                    "config": {
+                        "node_type": "Run Sequence",
+                        "sequence_name": "Sub Seq",
+                        "label": "Run: Sub Seq"
+                    },
+                    "pos": {
+                        "x": 162.0,
+                        "y": 11.0
+                    },
+                    "has_breakpoint": false
+                },
+                {
+                    "uuid": "ea264f62-e9f2-445b-a070-d5cfbb3f6f0a",
+                    "config": {
+                        "node_type": "For Loop",
+                        "label": "For Loop",
+                        "iterations": 3
+                    },
+                    "pos": {
+                        "x": -240.0,
+                        "y": -107.0
+                    },
+                    "has_breakpoint": false
+                },
+                {
+                    "uuid": "91bb3de3-d9c9-4961-b1b7-f71e416232ad",
+                    "config": {
+                        "label": "Hello",
+                        "identifier": "ns=2;i=1",
+                        "method_bname": "Hello",
+                        "node_type": "Method Call"
+                    },
+                    "pos": {
+                        "x": -9.0,
+                        "y": -219.0
+                    },
+                    "has_breakpoint": false
+                },
+                {
+                    "uuid": "36b45034-df47-4a53-9acf-7e63c9e798cc",
+                    "config": {
+                        "node_type": "Delay",
+                        "label": "Delay",
+                        "delay_seconds": 2.0
+                    },
+                    "pos": {
+                        "x": -241.0,
+                        "y": -216.0
+                    },
+                    "has_breakpoint": false
+                },
+                {
+                    "uuid": "f839215e-c7fb-439d-b67a-32d5f96f66e4",
+                    "config": {
+                        "node_type": "While Loop",
+                        "label": "While (!Hello)",
+                        "while_negate_condition": true,
+                        "while_condition_value": "Hello"
+                    },
+                    "pos": {
+                        "x": -503.0,
+                        "y": -204.0
+                    },
+                    "has_breakpoint": false
+                },
+                {
+                    "uuid": "df4bbc5b-5ba8-4572-9027-f99f15e16b65",
+                    "config": {
+                        "node_type": "Static Value",
+                        "label": "Value: WHILE",
+                        "static_value": "WHILE"
+                    },
+                    "pos": {
+                        "x": -717.0,
+                        "y": -129.0
+                    },
+                    "has_breakpoint": false
+                },
+                {
+                    "uuid": "639c49d7-d999-4bdd-8602-fb6fa094ded1",
+                    "config": {
+                        "label": "Hello",
+                        "identifier": "ns=2;i=1",
+                        "method_bname": "Hello",
+                        "node_type": "Method Call"
+                    },
+                    "pos": {
+                        "x": -923.0,
+                        "y": -130.0
+                    },
+                    "has_breakpoint": false
+                }
+            ],
+            "exec_connections": [
+                {
+                    "start_node_uuid": "7db5f254-c95a-4461-9132-2c375031e892",
+                    "end_node_uuid": "e08d1e3b-5d94-4950-bd7c-d5b206c0c2de",
+                    "condition": null
+                },
+                {
+                    "start_node_uuid": "ea264f62-e9f2-445b-a070-d5cfbb3f6f0a",
+                    "end_node_uuid": "7db5f254-c95a-4461-9132-2c375031e892",
+                    "condition": {
+                        "operator": "Loop Body"
+                    }
+                },
+                {
+                    "start_node_uuid": "f839215e-c7fb-439d-b67a-32d5f96f66e4",
+                    "end_node_uuid": "ea264f62-e9f2-445b-a070-d5cfbb3f6f0a",
+                    "condition": {
+                        "operator": "Finished"
+                    }
+                },
+                {
+                    "start_node_uuid": "ea264f62-e9f2-445b-a070-d5cfbb3f6f0a",
+                    "end_node_uuid": "c7824eeb-60b4-4178-8c2d-dba8ee7363e4",
+                    "condition": {
+                        "operator": "Finished"
+                    }
+                },
+                {
+                    "start_node_uuid": "df4bbc5b-5ba8-4572-9027-f99f15e16b65",
+                    "end_node_uuid": "ea264f62-e9f2-445b-a070-d5cfbb3f6f0a",
+                    "condition": {
+                        "operator": "==",
+                        "value": "LOOP"
+                    }
+                },
+                {
+                    "start_node_uuid": "36b45034-df47-4a53-9acf-7e63c9e798cc",
+                    "end_node_uuid": "91bb3de3-d9c9-4961-b1b7-f71e416232ad",
+                    "condition": null
+                },
+                {
+                    "start_node_uuid": "f839215e-c7fb-439d-b67a-32d5f96f66e4",
+                    "end_node_uuid": "36b45034-df47-4a53-9acf-7e63c9e798cc",
+                    "condition": {
+                        "operator": "Loop Body"
+                    }
+                },
+                {
+                    "start_node_uuid": "df4bbc5b-5ba8-4572-9027-f99f15e16b65",
+                    "end_node_uuid": "f839215e-c7fb-439d-b67a-32d5f96f66e4",
+                    "condition": {
+                        "operator": "==",
+                        "value": "WHILE"
+                    }
+                },
+                {
+                    "start_node_uuid": "639c49d7-d999-4bdd-8602-fb6fa094ded1",
+                    "end_node_uuid": "df4bbc5b-5ba8-4572-9027-f99f15e16b65",
+                    "condition": null
+                }
+            ],
+            "data_connections": [
+                {
+                    "start_node_uuid": "91bb3de3-d9c9-4961-b1b7-f71e416232ad",
+                    "end_node_uuid": "f839215e-c7fb-439d-b67a-32d5f96f66e4",
+                    "control_point": {
+                        "x": -30.0,
+                        "y": -115.0
+                    }
+                }
+            ]
+        },
+        "Sub Seq": {
+            "nodes": [
+                {
+                    "uuid": "9e36eb4d-f1e9-4244-b516-1f00c3ce081d",
+                    "config": {
+                        "label": "Hello",
+                        "identifier": "ns=2;i=1",
+                        "method_bname": "Hello",
+                        "node_type": "Method Call"
+                    },
+                    "pos": {
+                        "x": -744.0,
+                        "y": -62.0
+                    },
+                    "has_breakpoint": false
+                },
+                {
+                    "uuid": "2bc84166-3597-483f-9ada-acba3ec7592e",
+                    "config": {
+                        "label": "Who",
+                        "identifier": "ns=2;i=1",
+                        "method_bname": "Who",
+                        "node_type": "Method Call",
+                        "has_argument": true,
+                        "use_connected_input": false,
+                        "argument_value": "LSCS"
+                    },
+                    "pos": {
+                        "x": -272.0,
+                        "y": -19.0
+                    },
+                    "has_breakpoint": false
+                },
+                {
+                    "uuid": "c430f1d3-cba6-429b-ae09-35b991be5cb5",
+                    "config": {
+                        "node_type": "Delay",
+                        "label": "Delay",
+                        "delay_seconds": 5.0
+                    },
+                    "pos": {
+                        "x": -505.0,
+                        "y": -43.0
+                    },
+                    "has_breakpoint": false
+                }
+            ],
+            "exec_connections": [
+                {
+                    "start_node_uuid": "9e36eb4d-f1e9-4244-b516-1f00c3ce081d",
+                    "end_node_uuid": "c430f1d3-cba6-429b-ae09-35b991be5cb5",
+                    "condition": null
+                },
+                {
+                    "start_node_uuid": "c430f1d3-cba6-429b-ae09-35b991be5cb5",
+                    "end_node_uuid": "2bc84166-3597-483f-9ada-acba3ec7592e",
+                    "condition": null
+                }
+            ],
+            "data_connections": []
+        }
+    },
+    "open_tabs": [
+        "Main Seq"
+    ]
+}

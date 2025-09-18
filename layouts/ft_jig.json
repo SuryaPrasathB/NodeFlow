@@ -1,0 +1,36 @@
+[
+    [
+        {
+            "config": {
+                "widget_type": "Button",
+                "label": "Read_Energy",
+                "search_type": "By Node ID",
+                "identifier": "ns=2;i=5015",
+                "method_bname": "Read_Energy",
+                "has_argument": false
+            },
+            "geometry": {
+                "x": 20,
+                "y": 20,
+                "width": 160,
+                "height": 60
+            }
+        },
+        {
+            "config": {
+                "widget_type": "Button",
+                "label": "Read_Current",
+                "search_type": "By Node ID",
+                "identifier": "ns=2;i=5015",
+                "method_bname": "Read_Current",
+                "has_argument": false
+            },
+            "geometry": {
+                "x": 20,
+                "y": 80,
+                "width": 160,
+                "height": 60
+            }
+        }
+    ]
+]

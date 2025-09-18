@@ -1,0 +1,32 @@
+[
+    [
+        {
+            "config": {
+                "widget_type": "String Input",
+                "label": "String",
+                "search_type": "By Node ID",
+                "identifier": "ns=2;i=2"
+            },
+            "geometry": {
+                "x": 30,
+                "y": 30,
+                "width": 320,
+                "height": 180
+            }
+        },
+        {
+            "config": {
+                "widget_type": "Text Display",
+                "label": "String",
+                "search_type": "By Node ID",
+                "identifier": "ns=2;i=2"
+            },
+            "geometry": {
+                "x": 500,
+                "y": 40,
+                "width": 160,
+                "height": 60
+            }
+        }
+    ]
+]
