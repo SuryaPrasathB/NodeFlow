@@ -1339,7 +1339,7 @@ class SequenceNode(QGraphicsObject):
         path.addRoundedRect(self.boundingRect(), 10, 10)
 
         node_type = self.config.get('node_type')
-
+        
         # --- Custom Color Logic ---
         if 'custom_color' in self.config:
             base_color = self.config['custom_color']
@@ -1694,7 +1694,7 @@ class SequenceScene(QGraphicsScene):
             toggle_breakpoint_action = menu.addAction("Toggle Breakpoint")
             change_color_action = menu.addAction("Change Color...")
             menu.addSeparator()
-
+            
             action = menu.exec(event.screenPos())
 
             if action == toggle_breakpoint_action:
@@ -1708,12 +1708,12 @@ class SequenceScene(QGraphicsScene):
         """Opens a color dialog and sets the custom color for the given node."""
         current_color = QColor(node.config.get('custom_color', '#3c3f41'))
         color = QColorDialog.getColor(current_color, self.views()[0], "Choose Node Color")
-
+        
         if color.isValid():
             node.config['custom_color'] = color.name()
             node.update() # Repaint the node
             self.scene_changed.emit()
-
+            
         # Context menu for the scene background
         add_node_menu = menu.addMenu("Add Node")
         add_method_action = add_node_menu.addAction("Method Call (from Server Browser)")
@@ -1958,16 +1958,16 @@ class Minimap(QGraphicsView):
 
     def drawForeground(self, painter, rect):
         super().drawForeground(painter, rect)
-
+        
         # Get the visible rectangle of the main view
         main_viewport_rect = self.main_view.viewport().rect()
-
+        
         # Map the rectangle from the main view's viewport coordinates to scene coordinates
         visible_scene_poly = self.main_view.mapToScene(main_viewport_rect)
-
+        
         # Map the scene polygon to this minimap's viewport coordinates
         minimap_viewport_poly = self.mapFromScene(visible_scene_poly)
-
+        
         painter.setPen(QPen(QColor(255, 255, 255, 128), 2))
         painter.setBrush(QBrush(Qt.NoBrush))
         painter.drawPolygon(minimap_viewport_poly)
