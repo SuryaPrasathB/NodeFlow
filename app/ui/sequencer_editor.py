@@ -1530,8 +1530,9 @@ class DeleteItemsCommand(QUndoCommand):
                     data['end_socket_label'] = item.end_socket.label if hasattr(item.end_socket, 'label') else None
                 else:
                     data['end_socket_label'] = None
-                if item.control_point:
-                    data['control_point'] = item.control_point
+                data['h_control_y1'] = item.h_control_y1
+                data['h_control_y2'] = item.h_control_y2
+                data['v_control_x'] = item.v_control_x
             
             # Only add items that could be serialized
             if 'type' in data:
@@ -1592,9 +1593,10 @@ class DeleteItemsCommand(QUndoCommand):
                         end_socket = end_node.data_in_socket
                     
                     if start_node.data_out_socket and end_socket:
-                        conn = DataConnection(start_node.data_out_socket, end_socket, self.scene)
-                        if 'control_point' in data:
-                            conn.control_point = data.get('control_point')
+                        conn = DataConnection(start_node.data_out_socket, end_socket, self.scene, data.get('uuid'))
+                        conn.h_control_y1 = data.get('h_control_y1')
+                        conn.h_control_y2 = data.get('h_control_y2')
+                        conn.v_control_x = data.get('v_control_x')
                         conn.update_path()
                         self.scene.addItem(conn)
                         data['item'] = conn
@@ -1919,6 +1921,47 @@ class SequenceScene(QGraphicsScene):
                     self.scene_changed.emit()
         super().mouseDoubleClickEvent(event)
 
+class Minimap(QGraphicsView):
+    def __init__(self, main_view):
+        super().__init__(main_view.viewport())
+        self.main_view = main_view
+        self.setScene(self.main_view.scene)
+
+        self.setRenderHint(QPainter.RenderHint.Antialiasing)
+        self.setInteractive(True)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setStyleSheet("border: 1px solid #555;") # Add a border for visibility
+
+    def drawForeground(self, painter, rect):
+        super().drawForeground(painter, rect)
+
+        # Get the visible rectangle of the main view
+        main_viewport_rect = self.main_view.viewport().rect()
+
+        # Map the rectangle from the main view's viewport coordinates to scene coordinates
+        visible_scene_poly = self.main_view.mapToScene(main_viewport_rect)
+
+        # Map the scene polygon to this minimap's viewport coordinates
+        minimap_viewport_poly = self.mapFromScene(visible_scene_poly)
+
+        painter.setPen(QPen(QColor(255, 255, 255, 128), 2))
+        painter.setBrush(QBrush(Qt.NoBrush))
+        painter.drawPolygon(minimap_viewport_poly)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            scene_pos = self.mapToScene(event.pos())
+            self.main_view.centerOn(scene_pos)
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        scene_pos = self.mapToScene(event.pos())
+        self.main_view.centerOn(scene_pos)
+        event.accept()
+
 class SequenceEditor(QGraphicsView):       
     scene_changed = pyqtSignal()    
 
@@ -1951,8 +1994,9 @@ class SequenceEditor(QGraphicsView):
         self.last_found_node = None
 
         # --- Minimap ---
-        # The minimap is currently disabled due to a persistent bug.
-        self.minimap = None
+        self.minimap = Minimap(self)
+        self.horizontalScrollBar().valueChanged.connect(self.minimap.update)
+        self.verticalScrollBar().valueChanged.connect(self.minimap.update)
         
     def get_selected_nodes_data(self):
         """Returns a list of serialized data for all selected SequenceNode items."""
@@ -2050,10 +2094,14 @@ class SequenceEditor(QGraphicsView):
     def zoom_in(self):
         """Scales the view up by 20%."""
         self.scale(1.2, 1.2)
+        if self.minimap:
+            self.minimap.update()
 
     def zoom_out(self):
         """Scales the view down by 20%."""
         self.scale(1 / 1.2, 1 / 1.2)
+        if self.minimap:
+            self.minimap.update()
 
     def reset_zoom(self):
         """Resets the view's transformation to the default state."""
@@ -2077,8 +2125,14 @@ class SequenceEditor(QGraphicsView):
         
         # Position minimap in bottom-right corner
         if self.minimap:
-            # The minimap is currently disabled due to a persistent bug.
-            pass
+            minimap_size = 200
+            self.minimap.setGeometry(
+                self.width() - minimap_size - 10,
+                self.height() - minimap_size - 10,
+                minimap_size,
+                minimap_size
+            )
+            self.minimap.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
 
     def show_find_widget(self):
         """Shows and focuses the find widget in the top-right corner of the tab content area."""

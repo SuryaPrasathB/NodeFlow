@@ -8,7 +8,7 @@ context menu to add them to the dashboard or the sequencer.
 import logging
 from asyncua import ua
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLineEdit, QTreeWidget, QTreeWidgetItem, QMenu, QApplication, QTreeWidgetItemIterator
-from PyQt6.QtCore import Qt, pyqtSignal, QMimeData
+from PyQt6.QtCore import Qt, pyqtSignal, QMimeData, QTimer
 from PyQt6.QtGui import QAction, QDrag
 
 class ServerTreeView(QWidget):
@@ -141,60 +141,69 @@ class ServerTreeView(QWidget):
         if not node: return
 
         # Submit an async task to build and show the context menu
-        self.async_runner.submit(self.build_and_show_context_menu(node, position))
+        self.async_runner.submit(self.prepare_and_show_context_menu(node, position))
 
-    async def build_and_show_context_menu(self, node, position):
+    async def prepare_and_show_context_menu(self, node, position):
         """
-        Asynchronously determines the node type and then creates and displays
-        the appropriate context menu.
+        Fetches node data asynchronously, then schedules the synchronous
+        menu creation and display on the main GUI thread.
         """
         try:
             node_class = await node.read_node_class()
             
-            context_menu = QMenu(self.tree_widget)
-            
-            # This menu is always available for Variables and Objects
-            if node_class in [ua.NodeClass.Variable, ua.NodeClass.Object]:
-                add_widget_menu = context_menu.addMenu("Add as Widget")
-                display_num_action = QAction("Display (Numerical)", self.tree_widget)
-                display_num_action.triggered.connect(lambda: self.request_widget_creation(node, "Numerical Display"))
-                add_widget_menu.addAction(display_num_action)
-                
-                display_text_action = QAction("Display (Text)", self.tree_widget)
-                display_text_action.triggered.connect(lambda: self.request_widget_creation(node, "Text Display"))
-                add_widget_menu.addAction(display_text_action)
-                
-                input_str_action = QAction("Input (String)", self.tree_widget)
-                input_str_action.triggered.connect(lambda: self.request_widget_creation(node, "String Input"))
-                add_widget_menu.addAction(input_str_action)
-
-                input_num_action = QAction("Input (Numerical)", self.tree_widget)
-                input_num_action.triggered.connect(lambda: self.request_widget_creation(node, "Numerical Input"))
-                add_widget_menu.addAction(input_num_action)
-                
-                switch_action = QAction("Switch (Boolean)", self.tree_widget)
-                switch_action.triggered.connect(lambda: self.request_widget_creation(node, "Switch"))
-                add_widget_menu.addAction(switch_action)
-
-            # This option is specific to Method nodes
-            if node_class == ua.NodeClass.Method:
-                add_to_seq_action = QAction("Add to Sequencer", self.tree_widget)
-                add_to_seq_action.triggered.connect(lambda: self.request_sequencer_add(node))
-                context_menu.addAction(add_to_seq_action)
-
-                context_menu.addSeparator()
-
-                # Allow adding a method as a simple button widget as well
-                button_action = QAction("Add as Button Widget", self.tree_widget)
-                button_action.triggered.connect(lambda: self.request_widget_creation(node, "Button"))
-                context_menu.addAction(button_action)
-
-            # Only show the menu if there are any actions available
-            if not context_menu.isEmpty():
-                context_menu.exec(self.tree_widget.viewport().mapToGlobal(position))
+            # Now that we have the async data, schedule the sync part
+            # QTimer.singleShot is a good way to post an event to the Qt event loop
+            QTimer.singleShot(0, lambda: self.show_context_menu(node, node_class, position))
 
         except Exception as e:
             logging.error(f"Could not build context menu: {e}")
+
+    def show_context_menu(self, node, node_class, position):
+        """
+        Builds and shows the context menu. This is a regular Qt method,
+        not a coroutine.
+        """
+        context_menu = QMenu(self.tree_widget)
+
+        # This menu is always available for Variables and Objects
+        if node_class in [ua.NodeClass.Variable, ua.NodeClass.Object]:
+            add_widget_menu = context_menu.addMenu("Add as Widget")
+            display_num_action = QAction("Display (Numerical)", self.tree_widget)
+            display_num_action.triggered.connect(lambda: self.request_widget_creation(node, "Numerical Display"))
+            add_widget_menu.addAction(display_num_action)
+
+            display_text_action = QAction("Display (Text)", self.tree_widget)
+            display_text_action.triggered.connect(lambda: self.request_widget_creation(node, "Text Display"))
+            add_widget_menu.addAction(display_text_action)
+
+            input_str_action = QAction("Input (String)", self.tree_widget)
+            input_str_action.triggered.connect(lambda: self.request_widget_creation(node, "String Input"))
+            add_widget_menu.addAction(input_str_action)
+
+            input_num_action = QAction("Input (Numerical)", self.tree_widget)
+            input_num_action.triggered.connect(lambda: self.request_widget_creation(node, "Numerical Input"))
+            add_widget_menu.addAction(input_num_action)
+
+            switch_action = QAction("Switch (Boolean)", self.tree_widget)
+            switch_action.triggered.connect(lambda: self.request_widget_creation(node, "Switch"))
+            add_widget_menu.addAction(switch_action)
+
+        # This option is specific to Method nodes
+        if node_class == ua.NodeClass.Method:
+            add_to_seq_action = QAction("Add to Sequencer", self.tree_widget)
+            add_to_seq_action.triggered.connect(lambda: self.request_sequencer_add(node))
+            context_menu.addAction(add_to_seq_action)
+
+            context_menu.addSeparator()
+
+            # Allow adding a method as a simple button widget as well
+            button_action = QAction("Add as Button Widget", self.tree_widget)
+            button_action.triggered.connect(lambda: self.request_widget_creation(node, "Button"))
+            context_menu.addAction(button_action)
+
+        # Only show the menu if there are any actions available
+        if not context_menu.isEmpty():
+            context_menu.exec(self.tree_widget.viewport().mapToGlobal(position))
 
     def request_widget_creation(self, node, widget_type):
         """Starts the process of creating a dashboard widget."""
