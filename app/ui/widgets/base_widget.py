@@ -191,15 +191,17 @@ class BaseWidget(QFrame):
                 self.setSelected(True)
         
         # --- Drag/Resize Initiation ---
-        if self.isSelected() and not self.is_minimized:
+        if self.isSelected():
             # Use global position to calculate local position in BaseWidget
             local_pos = self.mapFromGlobal(event.globalPosition().toPoint())
             resize_margin = 10
             at_resize_handle = (local_pos.x() > self.width() - resize_margin and
                                 local_pos.y() > self.height() - resize_margin)
+
             if at_resize_handle:
                 self.is_resizing = True
-            else:
+            # Only allow dragging if the widget is not minimized
+            elif not self.is_minimized:
                 self.drag_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
 
     def eventFilter(self, source, event):
@@ -287,12 +289,14 @@ class BaseWidget(QFrame):
             self._original_size = self.size()
             self.content_widget.hide()
             self.minimized_widget.show()
-            self.setFixedSize(160, 60)
+            self.resize(160, 60)
+            self.setMaximumSize(16777215, 16777215) # Allow resizing
+            self.setMinimumSize(80, 40) # Set a reasonable minimum for minimized
         else:
             self.minimized_widget.hide()
             self.content_widget.show()
-            self.setFixedSize(self._original_size)
-            self.setMinimumSize(200, 120)
+            self.resize(self._original_size)
+            self.setMinimumSize(160, 80)
             self.setMaximumSize(16777215, 16777215)
         
         self.state_changed.emit(self.is_minimized)
@@ -308,9 +312,6 @@ class BaseWidget(QFrame):
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
-        if self.is_minimized:
-            return
-            
         if self.drag_position is not None or self.is_resizing:
             if hasattr(self.parent(), 'set_dragged_widget'):
                 self.parent().set_dragged_widget(self)
@@ -331,9 +332,6 @@ class BaseWidget(QFrame):
     def mouseReleaseEvent(self, event):
         if hasattr(self.parent(), 'set_dragged_widget'):
             self.parent().set_dragged_widget(None)
-
-        if self.is_minimized:
-            return
 
         grid_size = self.parent().grid_size if hasattr(self.parent(), 'grid_size') else 20
         if self.is_resizing:
