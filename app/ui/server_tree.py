@@ -7,29 +7,38 @@ context menu to add them to the dashboard or the sequencer.
 """
 import logging
 from asyncua import ua
-from PyQt6.QtWidgets import QTreeWidget, QTreeWidgetItem, QMenu, QApplication
+from PyQt6.QtWidgets import QWidget, QVBoxLayout, QLineEdit, QTreeWidget, QTreeWidgetItem, QMenu, QApplication, QTreeWidgetItemIterator
 from PyQt6.QtCore import Qt, pyqtSignal, QMimeData
 from PyQt6.QtGui import QAction, QDrag
 
-class ServerTreeView(QTreeWidget):
+class ServerTreeView(QWidget):
     """
-    A QTreeWidget that lazily browses and displays the OPC-UA server's node structure.
-    Users can add nodes to the dashboard or sequencer via a context menu.
+    A widget that contains a search bar and a QTreeWidget for browsing the OPC-UA server.
     """
     create_widget_requested = pyqtSignal(dict)
-    # NEW: Signal to add a method node to the sequencer editor
     add_to_sequencer_requested = pyqtSignal(dict)
 
     def __init__(self, opcua_logic, async_runner, parent=None):
         super().__init__(parent)
         self.opcua_logic = opcua_logic
         self.async_runner = async_runner
-        self.node_map = {}
 
-        self.setHeaderLabel("OPC-UA Server")
-        self.itemExpanded.connect(self.on_item_expanded)
-        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.customContextMenuRequested.connect(self.open_context_menu)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)
+
+        self.search_bar = QLineEdit()
+        self.search_bar.setPlaceholderText("Search nodes...")
+        self.search_bar.textChanged.connect(self.filter_tree)
+        layout.addWidget(self.search_bar)
+
+        self.tree_widget = QTreeWidget()
+        self.tree_widget.setHeaderLabel("OPC-UA Server")
+        self.tree_widget.itemExpanded.connect(self.on_item_expanded)
+        self.tree_widget.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.tree_widget.customContextMenuRequested.connect(self.open_context_menu)
+        layout.addWidget(self.tree_widget)
+
+        self.node_map = {}
         
         # REMOVED: All drag-and-drop related code has been removed for stability.
 
@@ -44,16 +53,16 @@ class ServerTreeView(QTreeWidget):
     
     def populate_root(self):
         """Clears the tree and adds top-level nodes (Objects, Types, Views, etc.) under Root."""
-        self.clear()
+        self.tree_widget.clear()
 
         if self.opcua_logic.is_connected:
             root_node = self.opcua_logic.client.get_root_node()
             self.node_map.clear()
 
-            root_item = QTreeWidgetItem(self, ["Root"])
+            root_item = QTreeWidgetItem(self.tree_widget, ["Root"])
             root_item.addChild(QTreeWidgetItem(["Loading..."]))
             self.node_map[id(root_item)] = root_node
-            self.addTopLevelItem(root_item)
+            self.tree_widget.addTopLevelItem(root_item)
 
             # Trigger lazy loading for root's children immediately
             self.async_runner.submit(self.populate_children(root_item, root_node))
@@ -125,7 +134,7 @@ class ServerTreeView(QTreeWidget):
         Shows a context menu. The options shown depend on the node type,
         which is determined asynchronously.
         """
-        item = self.itemAt(position)
+        item = self.tree_widget.itemAt(position)
         if not item: return
 
         node = self.node_map.get(id(item))
@@ -142,47 +151,47 @@ class ServerTreeView(QTreeWidget):
         try:
             node_class = await node.read_node_class()
             
-            context_menu = QMenu(self)
+            context_menu = QMenu(self.tree_widget)
             
             # This menu is always available for Variables and Objects
             if node_class in [ua.NodeClass.Variable, ua.NodeClass.Object]:
                 add_widget_menu = context_menu.addMenu("Add as Widget")
-                display_num_action = QAction("Display (Numerical)", self)
+                display_num_action = QAction("Display (Numerical)", self.tree_widget)
                 display_num_action.triggered.connect(lambda: self.request_widget_creation(node, "Numerical Display"))
                 add_widget_menu.addAction(display_num_action)
                 
-                display_text_action = QAction("Display (Text)", self)
+                display_text_action = QAction("Display (Text)", self.tree_widget)
                 display_text_action.triggered.connect(lambda: self.request_widget_creation(node, "Text Display"))
                 add_widget_menu.addAction(display_text_action)
                 
-                input_str_action = QAction("Input (String)", self)
+                input_str_action = QAction("Input (String)", self.tree_widget)
                 input_str_action.triggered.connect(lambda: self.request_widget_creation(node, "String Input"))
                 add_widget_menu.addAction(input_str_action)
 
-                input_num_action = QAction("Input (Numerical)", self)
+                input_num_action = QAction("Input (Numerical)", self.tree_widget)
                 input_num_action.triggered.connect(lambda: self.request_widget_creation(node, "Numerical Input"))
                 add_widget_menu.addAction(input_num_action)
                 
-                switch_action = QAction("Switch (Boolean)", self)
+                switch_action = QAction("Switch (Boolean)", self.tree_widget)
                 switch_action.triggered.connect(lambda: self.request_widget_creation(node, "Switch"))
                 add_widget_menu.addAction(switch_action)
 
             # This option is specific to Method nodes
             if node_class == ua.NodeClass.Method:
-                add_to_seq_action = QAction("Add to Sequencer", self)
+                add_to_seq_action = QAction("Add to Sequencer", self.tree_widget)
                 add_to_seq_action.triggered.connect(lambda: self.request_sequencer_add(node))
                 context_menu.addAction(add_to_seq_action)
 
                 context_menu.addSeparator()
 
                 # Allow adding a method as a simple button widget as well
-                button_action = QAction("Add as Button Widget", self)
+                button_action = QAction("Add as Button Widget", self.tree_widget)
                 button_action.triggered.connect(lambda: self.request_widget_creation(node, "Button"))
                 context_menu.addAction(button_action)
 
             # Only show the menu if there are any actions available
             if not context_menu.isEmpty():
-                context_menu.exec(self.viewport().mapToGlobal(position))
+                context_menu.exec(self.tree_widget.viewport().mapToGlobal(position))
 
         except Exception as e:
             logging.error(f"Could not build context menu: {e}")
@@ -238,3 +247,31 @@ class ServerTreeView(QTreeWidget):
             self.create_widget_requested.emit(config)
         except Exception as e:
             logging.error(f"Could not get node info for widget creation: {e}")
+
+    def filter_tree(self, text):
+        """Recursively filters the tree view based on the search text."""
+        for i in range(self.tree_widget.topLevelItemCount()):
+            self.filter_item(self.tree_widget.topLevelItem(i), text)
+
+    def filter_item(self, item, text):
+        """
+        Recursively checks if an item or any of its children match the search text.
+        Returns True if the item should be visible, False otherwise.
+        """
+        # An item is visible if its own text matches
+        match = text.lower() in item.text(0).lower()
+
+        # Or if any of its children should be visible
+        child_match_found = False
+        for i in range(item.childCount()):
+            if self.filter_item(item.child(i), text):
+                child_match_found = True
+
+        is_visible = match or child_match_found
+        item.setHidden(not is_visible)
+
+        # Expand items that have visible children to show the matches
+        if is_visible and child_match_found:
+            item.setExpanded(True)
+
+        return is_visible
