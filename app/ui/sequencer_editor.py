@@ -16,7 +16,7 @@ from enum import Enum
 from PyQt6.QtWidgets import (QGraphicsView, QGraphicsScene, QGraphicsObject, QGraphicsTextItem,
                              QStyleOptionGraphicsItem, QWidget, QGraphicsPathItem, QStyle,
                              QInputDialog, QLineEdit, QDialog, QFormLayout, QDialogButtonBox, QVBoxLayout, QMenu,
-                             QComboBox, QGraphicsProxyWidget, QToolTip)
+                             QComboBox, QGraphicsProxyWidget, QToolTip, QColorDialog)
 from PyQt6.QtCore import Qt, QRectF, QPointF, pyqtSignal, QObject, QPropertyAnimation
 from PyQt6.QtGui import (QPainter, QColor, QBrush, QPen, QPainterPath, QKeyEvent, 
                          QPainterPathStroker, QUndoCommand, QUndoStack, QFont, QTransform, QAction)
@@ -1339,15 +1339,21 @@ class SequenceNode(QGraphicsObject):
         path.addRoundedRect(self.boundingRect(), 10, 10)
 
         node_type = self.config.get('node_type')
-        base_color = "#3c3f41"
-        if node_type == NodeType.METHOD_CALL.value: base_color = "#2E4053"
-        elif node_type == NodeType.DELAY.value: base_color = "#483D8B"
-        elif node_type == NodeType.WRITE_VALUE.value: base_color = "#556B2F"
-        elif node_type == NodeType.STATIC_VALUE.value: base_color = "#006464"
-        elif node_type == NodeType.RUN_SEQUENCE.value: base_color = "#6A1B9A"
-        elif node_type == NodeType.FOR_LOOP.value: base_color = "#8B4513"
-        elif node_type == NodeType.WHILE_LOOP.value: base_color = "#1E8449"
-        elif node_type == NodeType.COMPUTE.value: base_color = "#BF360C" # NEW COLOR
+
+        # --- Custom Color Logic ---
+        if 'custom_color' in self.config:
+            base_color = self.config['custom_color']
+        else:
+            # Default color scheme
+            base_color = "#3c3f41"
+            if node_type == NodeType.METHOD_CALL.value: base_color = "#2E4053"
+            elif node_type == NodeType.DELAY.value: base_color = "#483D8B"
+            elif node_type == NodeType.WRITE_VALUE.value: base_color = "#556B2F"
+            elif node_type == NodeType.STATIC_VALUE.value: base_color = "#006464"
+            elif node_type == NodeType.RUN_SEQUENCE.value: base_color = "#6A1B9A"
+            elif node_type == NodeType.FOR_LOOP.value: base_color = "#8B4513"
+            elif node_type == NodeType.WHILE_LOOP.value: base_color = "#1E8449"
+            elif node_type == NodeType.COMPUTE.value: base_color = "#BF360C"
 
         state_colors = {"running": "#f0e68c", "success": "#90ee90", "failed": "#ff6347", "paused": "#6495ED"}
         color = state_colors.get(self.state, base_color if not self.isSelected() else "#5a98d1")
@@ -1686,12 +1692,28 @@ class SequenceScene(QGraphicsScene):
         # Context menu for a node
         if isinstance(item_at_pos, SequenceNode):
             toggle_breakpoint_action = menu.addAction("Toggle Breakpoint")
+            change_color_action = menu.addAction("Change Color...")
+            menu.addSeparator()
+
             action = menu.exec(event.screenPos())
+
             if action == toggle_breakpoint_action:
                 item_at_pos.toggle_breakpoint()
                 self.scene_changed.emit()
+            elif action == change_color_action:
+                self.set_node_color(item_at_pos)
             return
             
+    def set_node_color(self, node):
+        """Opens a color dialog and sets the custom color for the given node."""
+        current_color = QColor(node.config.get('custom_color', '#3c3f41'))
+        color = QColorDialog.getColor(current_color, self.views()[0], "Choose Node Color")
+
+        if color.isValid():
+            node.config['custom_color'] = color.name()
+            node.update() # Repaint the node
+            self.scene_changed.emit()
+
         # Context menu for the scene background
         add_node_menu = menu.addMenu("Add Node")
         add_method_action = add_node_menu.addAction("Method Call (from Server Browser)")
