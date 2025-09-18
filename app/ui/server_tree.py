@@ -22,15 +22,15 @@ class ServerTreeView(QWidget):
         super().__init__(parent)
         self.opcua_logic = opcua_logic
         self.async_runner = async_runner
-
+        
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
-
+        
         self.search_bar = QLineEdit()
         self.search_bar.setPlaceholderText("Search nodes...")
         self.search_bar.textChanged.connect(self.filter_tree)
         layout.addWidget(self.search_bar)
-
+        
         self.tree_widget = QTreeWidget()
         self.tree_widget.setHeaderLabel("OPC-UA Server")
         self.tree_widget.itemExpanded.connect(self.on_item_expanded)
@@ -266,12 +266,12 @@ class ServerTreeView(QWidget):
         for i in range(item.childCount()):
             if self.filter_item(item.child(i), text):
                 child_match_found = True
-
+        
         is_visible = match or child_match_found
         item.setHidden(not is_visible)
-
+        
         # Expand items that have visible children to show the matches
         if is_visible and child_match_found:
             item.setExpanded(True)
-
+        
         return is_visible

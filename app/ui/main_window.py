@@ -1030,12 +1030,12 @@ class MainWindow(QMainWindow):
             max_x = selected_widgets[-1].geometry().right()
             available_space = max_x - min_x - total_width
             spacing = available_space / (len(selected_widgets) - 1)
-
+            
             current_x = min_x
             for widget in selected_widgets:
                 widget.move(int(current_x), widget.y())
                 current_x += widget.width() + spacing
-
+        
         elif orientation == 'vertical':
             selected_widgets.sort(key=lambda w: w.geometry().top())
             total_height = sum(w.height() for w in selected_widgets)
@@ -1048,7 +1048,7 @@ class MainWindow(QMainWindow):
             for widget in selected_widgets:
                 widget.move(widget.x(), int(current_y))
                 current_y += widget.height() + spacing
-
+        
         self.set_project_dirty(True)
         
     def open_global_find(self):

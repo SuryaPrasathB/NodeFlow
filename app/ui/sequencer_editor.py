@@ -759,11 +759,11 @@ class SequenceEngine(QObject):
             # Resolve the input value. This reuses the logic for finding
             # the data connection and getting the value from the execution context.
             value_to_set = await self.resolve_argument_value(node_data, self.current_sequence_name)
-
+            
             # --- FEATURE: GLOBAL VARIABLES ---
             # The 'global_variables' dict is passed in from MainWindow
             self.global_variables[variable_name] = value_to_set
-
+            
             logging.info(f"Set global variable '{variable_name}' to: {value_to_set}")
             return True, True # Continue execution, no output value
         except Exception as e:
@@ -776,7 +776,7 @@ class SequenceEngine(QObject):
             variable_name = config.get('variable_name')
             if not variable_name:
                 raise ValueError("Variable name is not configured.")
-
+            
             # --- FEATURE: GLOBAL VARIABLES ---
             value = self.global_variables.get(variable_name)
             if value is None:
@@ -795,7 +795,7 @@ class SequenceEngine(QObject):
         """Finds all outgoing execution paths and runs them concurrently."""
         sequence_data = self.all_sequences[self.current_sequence_name]
         node_map = {n['uuid']: n for n in sequence_data['nodes']}
-
+        
         # Find all branches starting from this fork node
         branches = []
         for conn_data in sequence_data.get('exec_connections', []):
@@ -822,7 +822,7 @@ class SequenceEngine(QObject):
         await asyncio.gather(*tasks)
 
         logging.info(f"All forked branches from '{node_data['uuid']}' have completed.")
-
+        
         # A Fork node itself doesn't pass a value, it just splits execution.
         # It signals completion to the _next_ node, which is typically a Join.
         # However, the standard model is that the branches lead to a Join,
@@ -833,7 +833,7 @@ class SequenceEngine(QObject):
     async def execute_join_node(self, node_data):
         """Waits for all incoming execution paths to complete before continuing."""
         join_uuid = node_data['uuid']
-
+        
         # We use the execution context to store the state of the join
         if join_uuid not in self.execution_context:
             # First time hitting this join node in this run
@@ -1246,42 +1246,6 @@ class DataConnection(QGraphicsPathItem):
             'end_socket_label': self.end_socket.label if hasattr(self.end_socket, 'label') else None
         }
 
-class MinimapView(QGraphicsView):
-    def __init__(self, main_view, parent=None):
-        super().__init__(parent)
-        self.main_view = main_view
-        self.setScene(self.main_view.scene)
-        self.setScene(self.main_view.scene())
-        self.setRenderHint(QPainter.RenderHint.Antialiasing)
-        self.setInteractive(False)
-        self.visible_rect_item = QGraphicsRectItem()
-        self.visible_rect_item.setPen(QPen(QColor(255, 255, 255, 150), 2))
-        self.visible_rect_item.setBrush(QBrush(QColor(255, 255, 255, 50)))
-        self.scene().addItem(self.visible_rect_item)
-        self.main_view.viewport().installEventFilter(self)
-        self.update_visible_rect()
-
-    def eventFilter(self, source, event):
-        if source == self.main_view.viewport() and event.type() == event.Type.Resize:
-            self.update_visible_rect()
-        return super().eventFilter(source, event)
-
-    def update_visible_rect(self):
-        self.fitInView(self.scene().sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
-        visible_scene_rect = self.main_view.mapToScene(self.main_view.viewport().rect()).boundingRect()
-        self.visible_rect_item.setRect(visible_scene_rect)
-
-    def mousePressEvent(self, event):
-        self.pan_to_position(event.pos())
-
-    def mouseMoveEvent(self, event):
-        if event.buttons() & Qt.MouseButton.LeftButton:
-            self.pan_to_position(event.pos())
-
-    def pan_to_position(self, pos):
-        scene_pos = self.mapToScene(pos)
-        self.main_view.centerOn(scene_pos)
-        self.update_visible_rect()
 
 class SequenceNode(QGraphicsObject):
     def __init__(self, config, uuid_str=None):
@@ -1766,7 +1730,7 @@ class SequenceScene(QGraphicsScene):
             self.add_new_node_requested.emit(NodeType.FOR_LOOP, pos)
         elif action == add_while_loop_action:
             self.add_new_node_requested.emit(NodeType.WHILE_LOOP, pos)
-        elif action == add_compute_action:
+        elif action == add_compute_action: 
             self.add_new_node_requested.emit(NodeType.COMPUTE, pos)
         elif action == add_get_var_action:
             self.add_new_node_requested.emit(NodeType.GET_VARIABLE, pos)
@@ -1874,7 +1838,7 @@ class SequenceScene(QGraphicsScene):
                     target_port.connections.append(self.temp_connection)
                     self.temp_connection.update_path()
                     
-                    if self.temp_connection.start_port.parentItem().config.get('node_type') in [NodeType.FOR_LOOP.value, NodeType.WHILE_LOOP.value]:
+                    if self.temp_connection.start_port.parentItem().config.get('node_.type') in [NodeType.FOR_LOOP.value, NodeType.WHILE_LOOP.value]:
                         condition = {'operator': self.temp_connection.start_port.label}
                         self.temp_connection.set_condition(condition)
                     else:
@@ -1987,10 +1951,8 @@ class SequenceEditor(QGraphicsView):
         self.last_found_node = None
 
         # --- Minimap ---
-        self.minimap = MinimapView(self, self)
-        self.minimap.setFixedSize(200, 150)
-        self.horizontalScrollBar().valueChanged.connect(self.minimap.update_visible_rect)
-        self.verticalScrollBar().valueChanged.connect(self.minimap.update_visible_rect)
+        # The minimap is currently disabled due to a persistent bug.
+        self.minimap = None
         
     def get_selected_nodes_data(self):
         """Returns a list of serialized data for all selected SequenceNode items."""
@@ -2052,7 +2014,7 @@ class SequenceEditor(QGraphicsView):
              return
 
         current_engine = main_window.running_sequences.get(self.current_sequence)
-
+        
         if current_engine and current_engine.debug_state == DebugState.PAUSED:
             item = self.itemAt(event.pos())
             if isinstance(item, DataConnection):
@@ -2112,10 +2074,11 @@ class SequenceEditor(QGraphicsView):
         super().resizeEvent(event)
         if self.find_widget:
             self.find_widget.move(self.width() - self.find_widget.width() - 10, 10)
-
+        
         # Position minimap in bottom-right corner
         if self.minimap:
-            self.minimap.move(self.width() - self.minimap.width() - 10, self.height() - self.minimap.height() - 10)
+            # The minimap is currently disabled due to a persistent bug.
+            pass
 
     def show_find_widget(self):
         """Shows and focuses the find widget in the top-right corner of the tab content area."""
