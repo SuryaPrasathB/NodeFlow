@@ -24,6 +24,7 @@ class BaseWidget(QFrame):
         self.is_resizing = False
         self.is_minimized = False
         self._original_size = QSize()
+        self._minimized_size = None
         self._selected = False
         
         self.drag_start_pos = None
@@ -129,11 +130,28 @@ class BaseWidget(QFrame):
         """Serializes the widget's state for copy/paste or saving."""
         pos = self.pos()
         size = self.size()
+
+        if self.is_minimized:
+            # When minimized, 'geometry' holds the restored size, and 'minimized_size' holds the current size.
+            geometry = {
+                "x": pos.x(), "y": pos.y(),
+                "width": self._original_size.width(), "height": self._original_size.height()
+            }
+            minimized_size = {"width": size.width(), "height": size.height()}
+        else:
+            # When not minimized, 'geometry' is the current size.
+            geometry = {
+                "x": pos.x(), "y": pos.y(),
+                "width": size.width(), "height": size.height()
+            }
+            minimized_size = None
+
         return {
             "config": self.config,
-            "geometry": {"x": pos.x(), "y": pos.y(), "width": size.width(), "height": size.height()},
+            "geometry": geometry,
             "is_minimized": self.is_minimized,
-            "original_size": {"width": self._original_size.width(), "height": self._original_size.height()} if self.is_minimized else None
+            "original_size": {"width": self._original_size.width(), "height": self._original_size.height()} if self._original_size.isValid() else None,
+            "minimized_size": minimized_size
         }
 
     async def initialize(self):
@@ -286,13 +304,23 @@ class BaseWidget(QFrame):
         self.is_minimized = not self.is_minimized
         
         if self.is_minimized:
-            self._original_size = self.size()
+            # If the widget is being minimized for the first time, or original size is not set, store current size.
+            if not self._original_size.isValid():
+                self._original_size = self.size()
+
             self.content_widget.hide()
             self.minimized_widget.show()
-            self.resize(160, 60)
+
+            # Resize to last known minimized size, or default.
+            if self._minimized_size:
+                self.resize(self._minimized_size)
+            else:
+                self.resize(160, 60)
+
             self.setMaximumSize(16777215, 16777215) # Allow resizing
             self.setMinimumSize(80, 40) # Set a reasonable minimum for minimized
         else:
+            # Restore to original size
             self.minimized_widget.hide()
             self.content_widget.show()
             self.resize(self._original_size)
@@ -338,6 +366,10 @@ class BaseWidget(QFrame):
             new_width = round(self.width() / grid_size) * grid_size
             new_height = round(self.height() / grid_size) * grid_size
             self.resize(new_width, new_height)
+
+            # If minimized, save this new size as the preferred minimized size.
+            if self.is_minimized:
+                self._minimized_size = self.size()
 
         if self.drag_position:
             pos = self.pos()
