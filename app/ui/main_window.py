@@ -393,6 +393,7 @@ class MainWindow(QMainWindow):
         self._create_menu_bar()
         
         self.tab_widget = QTabWidget()
+        self.tab_widget.currentChanged.connect(self.on_main_tab_changed)
         main_layout.addWidget(self.tab_widget)
         self.main_stack.addWidget(self.main_editor_widget)
 
@@ -699,6 +700,29 @@ class MainWindow(QMainWindow):
         self.dashboard_container = QWidget()
         dashboard_layout = QVBoxLayout(self.dashboard_container)
         dashboard_layout.setContentsMargins(0, 0, 0, 0)
+
+        # --- Alignment Toolbar ---
+        self.alignment_toolbar = QToolBar("Alignment")
+        self.align_left_action = self.alignment_toolbar.addAction("Align Left")
+        self.align_center_action = self.alignment_toolbar.addAction("Align Center")
+        self.align_right_action = self.alignment_toolbar.addAction("Align Right")
+        self.align_top_action = self.alignment_toolbar.addAction("Align Top")
+        self.align_middle_action = self.alignment_toolbar.addAction("Align Middle")
+        self.align_bottom_action = self.alignment_toolbar.addAction("Align Bottom")
+        self.alignment_toolbar.addSeparator()
+        self.distribute_horizontal_action = self.alignment_toolbar.addAction("Distribute Horizontally")
+        self.distribute_vertical_action = self.alignment_toolbar.addAction("Distribute Vertically")
+        dashboard_layout.addWidget(self.alignment_toolbar)
+
+        self.align_left_action.triggered.connect(lambda: self.align_widgets('left'))
+        self.align_center_action.triggered.connect(lambda: self.align_widgets('center'))
+        self.align_right_action.triggered.connect(lambda: self.align_widgets('right'))
+        self.align_top_action.triggered.connect(lambda: self.align_widgets('top'))
+        self.align_middle_action.triggered.connect(lambda: self.align_widgets('middle'))
+        self.align_bottom_action.triggered.connect(lambda: self.align_widgets('bottom'))
+        self.distribute_horizontal_action.triggered.connect(lambda: self.distribute_widgets('horizontal'))
+        self.distribute_vertical_action.triggered.connect(lambda: self.distribute_widgets('vertical'))
+
         self.dashboard_area = QStackedWidget()
         dashboard_layout.addWidget(self.dashboard_area)
         dashboard_layout.addLayout(self._create_page_controls())
@@ -968,6 +992,64 @@ class MainWindow(QMainWindow):
                     self.delete_widget(widget)
         if items_deleted:
             self.set_project_dirty(True)
+
+    def align_widgets(self, edge):
+        selected_widgets = [w for w in self.pages[self.current_page_index] if w.isSelected()]
+        if len(selected_widgets) < 2:
+            return
+
+        # Use the first selected widget as the reference
+        reference_widget = selected_widgets[0]
+        ref_geom = reference_widget.geometry()
+
+        for widget in selected_widgets[1:]:
+            geom = widget.geometry()
+            if edge == 'left':
+                widget.move(ref_geom.left(), geom.y())
+            elif edge == 'right':
+                widget.move(ref_geom.right() - geom.width(), geom.y())
+            elif edge == 'top':
+                widget.move(geom.x(), ref_geom.top())
+            elif edge == 'bottom':
+                widget.move(geom.x(), ref_geom.bottom() - geom.height())
+            elif edge == 'center':
+                widget.move(ref_geom.center().x() - geom.width() // 2, geom.y())
+            elif edge == 'middle':
+                widget.move(geom.x(), ref_geom.center().y() - geom.height() // 2)
+        self.set_project_dirty(True)
+
+    def distribute_widgets(self, orientation):
+        selected_widgets = [w for w in self.pages[self.current_page_index] if w.isSelected()]
+        if len(selected_widgets) < 3:
+            return
+
+        if orientation == 'horizontal':
+            selected_widgets.sort(key=lambda w: w.geometry().left())
+            total_width = sum(w.width() for w in selected_widgets)
+            min_x = selected_widgets[0].geometry().left()
+            max_x = selected_widgets[-1].geometry().right()
+            available_space = max_x - min_x - total_width
+            spacing = available_space / (len(selected_widgets) - 1)
+
+            current_x = min_x
+            for widget in selected_widgets:
+                widget.move(int(current_x), widget.y())
+                current_x += widget.width() + spacing
+
+        elif orientation == 'vertical':
+            selected_widgets.sort(key=lambda w: w.geometry().top())
+            total_height = sum(w.height() for w in selected_widgets)
+            min_y = selected_widgets[0].geometry().top()
+            max_y = selected_widgets[-1].geometry().bottom()
+            available_space = max_y - min_y - total_height
+            spacing = available_space / (len(selected_widgets) - 1)
+
+            current_y = min_y
+            for widget in selected_widgets:
+                widget.move(widget.x(), int(current_y))
+                current_y += widget.height() + spacing
+
+        self.set_project_dirty(True)
         
     def open_global_find(self):
         if not self.sequences:
@@ -1658,3 +1740,7 @@ class MainWindow(QMainWindow):
             
     def _on_scene_changed(self):
         self.set_project_dirty(True)
+
+    def on_main_tab_changed(self, index):
+        is_dashboard = self.tab_widget.widget(index) == self.dashboard_container
+        self.alignment_toolbar.setVisible(is_dashboard)
