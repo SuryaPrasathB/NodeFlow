@@ -28,6 +28,7 @@ from .compute_node_dialog import ComputeNodeDialog
 from .error_dialog import show_error_message
 from app.ui.widgets.find_widget import FindWidget
 from app.utils.paths import resource_path
+from .python_script_dialog import PythonScriptDialog
 
 class DebugState(Enum):
     IDLE = 0
@@ -51,6 +52,7 @@ class NodeType(Enum):
     # --- FEATURE: GLOBAL VARIABLES ---
     SET_VARIABLE = "Set Variable"
     GET_VARIABLE = "Get Variable"
+    PYTHON_SCRIPT = "Python Script"
 
 class CommentNode(QGraphicsTextItem):
     def __init__(self, text, uuid_str=None):
@@ -482,6 +484,8 @@ class SequenceEngine(QObject):
             return await self.execute_fork_node(node_data)
         elif node_type == NodeType.JOIN.value:
             return await self.execute_join_node(node_data)
+        elif node_type == NodeType.PYTHON_SCRIPT.value:
+            return await self.execute_python_script_node(node_data)
         else:
             logging.error(f"Unknown node type '{node_type}' for node '{node_data['config']['label']}'")
             return None, False
@@ -830,6 +834,36 @@ class SequenceEngine(QObject):
         # and the Join node is what continues the main sequence flow.
         # So, the Fork node's job is done after gathering the tasks.
         return True, True
+
+    async def execute_python_script_node(self, node_data):
+        try:
+            config = node_data['config']
+            script = config.get('script', '')
+            if not script:
+                return None, True # No script, just pass through
+
+            # Resolve input value
+            input_value = await self.resolve_argument_value(node_data, self.current_sequence_name)
+
+            # Prepare the execution scope
+            local_scope = {
+                'INPUT': input_value,
+                'output': None
+            }
+
+            # Execute the script
+            exec(script, {}, local_scope)
+
+            # Get the output
+            output_value = local_scope.get('output')
+            self.execution_context[node_data['uuid']] = output_value
+
+            logging.info(f"Python script node executed. Output: {output_value}")
+            return output_value, True
+
+        except Exception as e:
+            logging.error(f"Failed to execute Python script node: {e}")
+            return None, False
 
     async def execute_join_node(self, node_data):
         """Waits for all incoming execution paths to complete before continuing."""
@@ -1459,6 +1493,107 @@ class SequenceNode(QGraphicsObject):
         self.animation = anim # Keep a reference
 
 
+class GroupNode(QGraphicsObject):
+    def __init__(self, title="Group", uuid_str=None):
+        super().__init__()
+        self.uuid = uuid_str or str(uuid.uuid4())
+        self.setFlag(QGraphicsObject.GraphicsItemFlag.ItemIsMovable)
+        self.setFlag(QGraphicsObject.GraphicsItemFlag.ItemIsSelectable)
+        self.setZValue(-10)
+
+        self.width = 300
+        self.height = 200
+        self.title_item = EditableTitleTextItem(title, self)
+        self.title_item.setPos(5, 5)
+
+        self.contained_nodes = []
+
+    def boundingRect(self):
+        return QRectF(0, 0, self.width, self.height)
+
+    def paint(self, painter, option, widget=None):
+        path = QPainterPath()
+        path.addRoundedRect(self.boundingRect(), 10, 10)
+
+        painter.setBrush(QColor(255, 255, 255, 20))
+        painter.setPen(QPen(QColor(200, 200, 200, 100), 2))
+        painter.drawPath(path)
+
+        # Draw resize handle
+        handle_size = 10
+        handle_rect = QRectF(self.width - handle_size, self.height - handle_size, handle_size, handle_size)
+        painter.setBrush(QColor(255, 255, 255, 100))
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.drawRect(handle_rect)
+
+    def mouseDoubleClickEvent(self, event):
+        if self.title_item.boundingRect().contains(event.pos()):
+            self.title_item.setTextInteractionFlags(Qt.TextEditorInteraction.TextEditorInteraction)
+            self.title_item.setFocus()
+        super().mouseDoubleClickEvent(event)
+
+    def mousePressEvent(self, event):
+        self.is_resizing = False
+        handle_size = 10
+        handle_rect = QRectF(self.width - handle_size, self.height - handle_size, handle_size, handle_size)
+        if handle_rect.contains(event.pos()):
+            self.is_resizing = True
+            self.resize_start_pos = event.pos()
+            self.resize_start_size = (self.width, self.height)
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self.is_resizing:
+            delta = event.pos() - self.resize_start_pos
+            self.prepareGeometryChange()
+            self.width = self.resize_start_size[0] + delta.x()
+            self.height = self.resize_start_size[1] + delta.y()
+            self.update()
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        self.is_resizing = False
+        super().mouseReleaseEvent(event)
+
+    def itemChange(self, change, value):
+        if change == QGraphicsObject.GraphicsItemChange.ItemPositionHasChanged:
+            # This logic will be handled by parenting the nodes to the group
+            pass
+        return super().itemChange(change, value)
+
+    def add_node(self, node):
+        if node not in self.contained_nodes:
+            self.contained_nodes.append(node)
+            node.setParentItem(self)
+
+    def remove_node(self, node):
+        if node in self.contained_nodes:
+            self.contained_nodes.remove(node)
+            node.setParentItem(None)
+
+    def serialize(self):
+        return {
+            'uuid': self.uuid,
+            'title': self.title_item.toPlainText(),
+            'pos': {'x': self.pos().x(), 'y': self.pos().y()},
+            'size': {'width': self.width, 'height': self.height},
+            'contained_nodes': [node.uuid for node in self.contained_nodes]
+        }
+
+
+class EditableTitleTextItem(QGraphicsTextItem):
+    def __init__(self, text, parent):
+        super().__init__(text, parent)
+        self.parent = parent
+        self.setPlainText(text)
+        self.setDefaultTextColor(Qt.GlobalColor.white)
+        self.setTextInteractionFlags(Qt.TextEditorInteraction.NoTextInteraction)
+
+    def focusOutEvent(self, event):
+        self.setTextInteractionFlags(Qt.TextEditorInteraction.NoTextInteraction)
+        super().focusOutEvent(event)
+
+
 class AddNodeCommand(QUndoCommand):
     def __init__(self, scene, config, position, parent=None):
         super().__init__(parent)
@@ -1650,6 +1785,40 @@ class SequenceScene(QGraphicsScene):
         self.undo_stack = QUndoStack(self)
         self.moving_nodes = {}
 
+    def group_selected_nodes(self):
+        selected_nodes = [item for item in self.selectedItems() if isinstance(item, SequenceNode)]
+        if not selected_nodes:
+            return
+
+        # Calculate bounding box of selected nodes
+        bounding_rect = QRectF()
+        for node in selected_nodes:
+            if bounding_rect.isNull():
+                bounding_rect = node.sceneBoundingRect()
+            else:
+                bounding_rect = bounding_rect.united(node.sceneBoundingRect())
+
+        # Create group node
+        group = GroupNode()
+        group.setPos(bounding_rect.topLeft() - QPointF(20, 20))
+        group.width = bounding_rect.width() + 40
+        group.height = bounding_rect.height() + 40
+        self.addItem(group)
+
+        # Add nodes to group
+        for node in selected_nodes:
+            group.add_node(node)
+
+        self.clearSelection()
+        group.setSelected(True)
+        self.scene_changed.emit()
+
+    def ungroup_nodes(self, group_node):
+        for node in group_node.contained_nodes[:]:
+            group_node.remove_node(node)
+        self.removeItem(group_node)
+        self.scene_changed.emit()
+
     def drawBackground(self, painter: QPainter, rect: QRectF):
         """Draws a dot grid background, inspired by Node-RED."""
         super().drawBackground(painter, rect)
@@ -1691,6 +1860,20 @@ class SequenceScene(QGraphicsScene):
         menu = QMenu()
         
         # Context menu for a node
+        if isinstance(item_at_pos, GroupNode):
+            ungroup_action = menu.addAction("Ungroup")
+            action = menu.exec(event.screenPos())
+            if action == ungroup_action:
+                self.ungroup_nodes(item_at_pos)
+            return
+
+        if len(self.selectedItems()) > 1:
+            group_action = menu.addAction("Group Selected")
+            action = menu.exec(event.screenPos())
+            if action == group_action:
+                self.group_selected_nodes()
+            return
+
         if isinstance(item_at_pos, SequenceNode):
             toggle_breakpoint_action = menu.addAction("Toggle Breakpoint")
             change_color_action = menu.addAction("Change Color...")
@@ -1736,6 +1919,8 @@ class SequenceScene(QGraphicsScene):
         add_get_var_action = add_node_menu.addAction(NodeType.GET_VARIABLE.value)
         add_set_var_action = add_node_menu.addAction(NodeType.SET_VARIABLE.value)
         add_node_menu.addSeparator()
+        add_python_script_action = add_node_menu.addAction(NodeType.PYTHON_SCRIPT.value)
+        add_node_menu.addSeparator()
         add_comment_action = add_node_menu.addAction(NodeType.COMMENT.value)
 
         action = menu.exec(event.screenPos())
@@ -1765,6 +1950,8 @@ class SequenceScene(QGraphicsScene):
             self.add_new_node_requested.emit(NodeType.FORK, pos)
         elif action == add_join_action:
             self.add_new_node_requested.emit(NodeType.JOIN, pos)
+        elif action == add_python_script_action:
+            self.add_new_node_requested.emit(NodeType.PYTHON_SCRIPT, pos)
 
     def set_delete_mode(self, is_active):
         self.delete_mode = is_active
@@ -1904,6 +2091,12 @@ class SequenceScene(QGraphicsScene):
             dialog = None
             if node_type == NodeType.METHOD_CALL.value or node_type == NodeType.WRITE_VALUE.value:
                 dialog = NodeConfigDialog(self.views()[0], current_config=item.config)
+            elif node_type == NodeType.PYTHON_SCRIPT.value:
+                dialog = PythonScriptDialog(self.views()[0], script=item.config.get('script', ''))
+                if dialog.exec():
+                    item.config['script'] = dialog.get_script()
+                    self.scene_changed.emit()
+                return
             elif node_type == NodeType.DELAY.value:
                 delay, ok = QInputDialog.getDouble(self.views()[0], "Configure Delay", "Delay (seconds):", item.config.get('delay_seconds', 1.0), 0.1, 3600, 2)
                 if ok: 
@@ -2347,6 +2540,9 @@ class SequenceEditor(QGraphicsView):
             config['label'] = "While (!True)"
             config['while_negate_condition'] = True
             config['while_condition_value'] = "True"
+        elif node_type == NodeType.PYTHON_SCRIPT:
+            config['label'] = "Python Script"
+            config['script'] = "# INPUT is available as a variable\n# Set the output value using: output = ..."
 
         command = AddNodeCommand(self.scene, config, position)
         self.scene.undo_stack.push(command)
@@ -2365,9 +2561,12 @@ class SequenceEditor(QGraphicsView):
         nodes = []
         exec_connections = []
         data_connections = []
+        groups = []
         for item in self.scene.items():
             if isinstance(item, (SequenceNode, CommentNode)):
                 nodes.append(item.serialize())
+            elif isinstance(item, GroupNode):
+                groups.append(item.serialize())
             elif isinstance(item, Connection):
                 serialized_conn = item.serialize()
                 if serialized_conn:
@@ -2376,7 +2575,7 @@ class SequenceEditor(QGraphicsView):
                 serialized_conn = item.serialize()
                 if serialized_conn:
                     data_connections.append(serialized_conn)
-        return {'nodes': nodes, 'exec_connections': exec_connections, 'data_connections': data_connections}
+        return {'nodes': nodes, 'exec_connections': exec_connections, 'data_connections': data_connections, 'groups': groups}
 
     def load_data(self, data):
         """Loads a scene from a dictionary."""
@@ -2395,6 +2594,17 @@ class SequenceEditor(QGraphicsView):
                 node.setPos(QPointF(node_data['pos']['x'], node_data['pos']['y']))
                 self.scene.addItem(node)
                 nodes_map[node_data['uuid']] = node
+
+        if 'groups' in data:
+            for group_data in data['groups']:
+                group = GroupNode(group_data['title'], group_data['uuid'])
+                group.setPos(QPointF(group_data['pos']['x'], group_data['pos']['y']))
+                group.width = group_data['size']['width']
+                group.height = group_data['size']['height']
+                self.scene.addItem(group)
+                for node_uuid in group_data['contained_nodes']:
+                    if node_uuid in nodes_map:
+                        group.add_node(nodes_map[node_uuid])
 
         if 'exec_connections' in data:
             for conn_data in data['exec_connections']:
