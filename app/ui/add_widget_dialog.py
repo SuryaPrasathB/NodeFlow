@@ -26,9 +26,9 @@ class AddWidgetDialog(QDialog):
 
         self.widget_type_combo = QComboBox()
         self.widget_type_combo.addItems([
-            "Numerical Display", "Text Display", "Switch", 
+            "Numerical Display", "Text Display", "Switch",
             "String Input", "Numerical Input", "Button",
-            "Sequence Button"
+            "Sequence Button", "Plotter"
         ])
         self.form_layout.addRow("Widget Type:", self.widget_type_combo)
 
@@ -53,6 +53,11 @@ class AddWidgetDialog(QDialog):
         self.sequence_name_input = QLineEdit()
         self.sequence_name_input.setPlaceholderText("Enter the name of the sequence to run")
         self.form_layout.addRow(self.sequence_name_label, self.sequence_name_input)
+
+        self.buffer_size_label = QLabel("Buffer Size:")
+        self.buffer_size_input = QLineEdit()
+        self.buffer_size_input.setPlaceholderText("e.g., 100")
+        self.form_layout.addRow(self.buffer_size_label, self.buffer_size_input)
         
         layout.addLayout(self.form_layout)
         button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
@@ -93,7 +98,11 @@ class AddWidgetDialog(QDialog):
         widget_type = self.widget_type_combo.currentText()
         is_button = (widget_type == "Button")
         is_sequence = (widget_type == "Sequence Button")
-        is_standard_node = not is_button and not is_sequence
+        is_plotter = (widget_type == "Plotter")
+        is_standard_node = not is_button and not is_sequence and not is_plotter
+
+        self.buffer_size_label.setVisible(is_plotter)
+        self.buffer_size_input.setVisible(is_plotter)
 
         self.method_bname_label.setVisible(is_button)
         self.method_bname_input.setVisible(is_button)
@@ -116,6 +125,7 @@ class AddWidgetDialog(QDialog):
         self.label_input.setText(config.get("label", ""))
         self.identifier_input.setText(config.get("identifier", ""))
         self.sequence_name_input.setText(config.get("sequence_name", ""))
+        self.buffer_size_input.setText(str(config.get("buffer_size", 100)))
         
         if self.is_from_tree:
             self.identifier_input.setReadOnly(True)
@@ -144,5 +154,7 @@ class AddWidgetDialog(QDialog):
         if widget_type == "Button":
             config["method_bname"] = self.method_bname_input.text()
             config["has_argument"] = self.has_argument_checkbox.isChecked()
+        elif widget_type == "Plotter":
+            config["buffer_size"] = int(self.buffer_size_input.text()) if self.buffer_size_input.text().isdigit() else 100
             
         return config

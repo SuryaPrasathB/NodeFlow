@@ -37,6 +37,7 @@ from app.ui.widgets.display_widget import DisplayWidget
 from app.ui.widgets.switch_widget import SwitchWidget
 from app.ui.widgets.input_widget import InputWidget
 from app.ui.widgets.button_widget import ButtonWidget
+from app.ui.widgets.plotter_widget import PlotterWidget
 
 class ServerSettingsDialog(QDialog):
     """Dialog for configuring server connection settings."""
@@ -1265,7 +1266,7 @@ class MainWindow(QMainWindow):
         config = widget_data['config']
         geometry = widget_data.get('geometry')
         widget_type = config["widget_type"]
-        widget_class_map = { "Numerical Display": DisplayWidget, "Text Display": DisplayWidget, "Switch": SwitchWidget, "String Input": InputWidget, "Numerical Input": InputWidget, "Button": ButtonWidget, "Sequence Button": SequenceWidget }
+        widget_class_map = { "Numerical Display": DisplayWidget, "Text Display": DisplayWidget, "Switch": SwitchWidget, "String Input": InputWidget, "Numerical Input": InputWidget, "Button": ButtonWidget, "Sequence Button": SequenceWidget, "Plotter": PlotterWidget }
         widget_class = widget_class_map.get(widget_type)
         if not widget_class:
             logging.error(f"Unknown widget type '{widget_type}' in project file.")
