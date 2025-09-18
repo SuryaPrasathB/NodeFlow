@@ -1340,7 +1340,6 @@ class SequenceNode(QGraphicsObject):
         path.addRoundedRect(self.boundingRect(), 10, 10)
 
         node_type = self.config.get('node_type')
-
         # --- Custom Color Logic ---
         if 'custom_color' in self.config:
             base_color = self.config['custom_color']
@@ -1695,7 +1694,6 @@ class SequenceScene(QGraphicsScene):
             toggle_breakpoint_action = menu.addAction("Toggle Breakpoint")
             change_color_action = menu.addAction("Change Color...")
             menu.addSeparator()
-
             action = menu.exec(event.screenPos())
 
             if action == toggle_breakpoint_action:
@@ -1709,12 +1707,11 @@ class SequenceScene(QGraphicsScene):
         """Opens a color dialog and sets the custom color for the given node."""
         current_color = QColor(node.config.get('custom_color', '#3c3f41'))
         color = QColorDialog.getColor(current_color, self.views()[0], "Choose Node Color")
-
         if color.isValid():
             node.config['custom_color'] = color.name()
             node.update() # Repaint the node
             self.scene_changed.emit()
-
+            
         # Context menu for the scene background
         add_node_menu = menu.addMenu("Add Node")
         add_method_action = add_node_menu.addAction("Method Call (from Server Browser)")
@@ -1953,11 +1950,13 @@ class Minimap(QGraphicsView):
         self._is_dragging_viewport = False
         self._drag_start_pos = QPointF()
 
+
         self.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.setInteractive(True)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setStyleSheet("border: 1px solid #555;") # Add a border for visibility
+
 
     def get_viewport_polygon(self):
         """Calculates and returns the viewport polygon in minimap coordinates."""
@@ -2054,7 +2053,6 @@ class SequenceEditor(QGraphicsView):
         self.minimap = Minimap(self)
         self.horizontalScrollBar().valueChanged.connect(self.minimap.update)
         self.verticalScrollBar().valueChanged.connect(self.minimap.update)
-
         # --- Minimap Toggle Button ---
         self.minimap_toggle_button = QPushButton(self)
         # Using placeholder icons as the requested ones were not found
@@ -2208,10 +2206,11 @@ class SequenceEditor(QGraphicsView):
                 minimap_size
             )
             self.minimap.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
-
+            
         if self.minimap_toggle_button:
             button_size = self.minimap_toggle_button.height()
             self.minimap_toggle_button.move(10, self.height() - button_size - 10)
+
 
     def show_find_widget(self):
         """Shows and focuses the find widget in the top-right corner of the tab content area."""
