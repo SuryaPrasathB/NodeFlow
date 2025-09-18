@@ -61,7 +61,7 @@ class CommentNode(QGraphicsTextItem):
         self.setFlag(QGraphicsObject.GraphicsItemFlag.ItemIsMovable)
         self.setFlag(QGraphicsObject.GraphicsItemFlag.ItemIsSelectable)
         self.setFlag(QGraphicsObject.GraphicsItemFlag.ItemIsFocusable)
-        self.setTextInteractionFlags(Qt.TextEditorInteraction)
+        self.setTextInteractionFlags(Qt.TextInteractionFlag.TextEditorInteraction)
         self.setDefaultTextColor(QColor("#FFFFFF"))
         font = QFont()
         font.setPointSize(12)
@@ -1528,7 +1528,7 @@ class GroupNode(QGraphicsObject):
 
     def mouseDoubleClickEvent(self, event):
         if self.title_item.boundingRect().contains(event.pos()):
-            self.title_item.setTextInteractionFlags(Qt.TextEditorInteraction.TextEditorInteraction)
+            self.title_item.setTextInteractionFlags(Qt.TextInteractionFlag.TextEditorInteraction)
             self.title_item.setFocus()
         super().mouseDoubleClickEvent(event)
 
@@ -1587,10 +1587,10 @@ class EditableTitleTextItem(QGraphicsTextItem):
         self.parent = parent
         self.setPlainText(text)
         self.setDefaultTextColor(Qt.GlobalColor.white)
-        self.setTextInteractionFlags(Qt.TextEditorInteraction.NoTextInteraction)
+        self.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
 
     def focusOutEvent(self, event):
-        self.setTextInteractionFlags(Qt.TextEditorInteraction.NoTextInteraction)
+        self.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
         super().focusOutEvent(event)
 
 
