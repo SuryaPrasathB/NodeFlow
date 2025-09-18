@@ -1244,6 +1244,42 @@ class DataConnection(QGraphicsPathItem):
             'end_socket_label': self.end_socket.label if hasattr(self.end_socket, 'label') else None
         }
 
+class MinimapView(QGraphicsView):
+    def __init__(self, main_view, parent=None):
+        super().__init__(parent)
+        self.main_view = main_view
+        self.setScene(self.main_view.scene())
+        self.setRenderHint(QPainter.RenderHint.Antialiasing)
+        self.setInteractive(False)
+        self.visible_rect_item = QGraphicsRectItem()
+        self.visible_rect_item.setPen(QPen(QColor(255, 255, 255, 150), 2))
+        self.visible_rect_item.setBrush(QBrush(QColor(255, 255, 255, 50)))
+        self.scene().addItem(self.visible_rect_item)
+        self.main_view.viewport().installEventFilter(self)
+        self.update_visible_rect()
+
+    def eventFilter(self, source, event):
+        if source == self.main_view.viewport() and event.type() == event.Type.Resize:
+            self.update_visible_rect()
+        return super().eventFilter(source, event)
+
+    def update_visible_rect(self):
+        self.fitInView(self.scene().sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+        visible_scene_rect = self.main_view.mapToScene(self.main_view.viewport().rect()).boundingRect()
+        self.visible_rect_item.setRect(visible_scene_rect)
+
+    def mousePressEvent(self, event):
+        self.pan_to_position(event.pos())
+
+    def mouseMoveEvent(self, event):
+        if event.buttons() & Qt.MouseButton.LeftButton:
+            self.pan_to_position(event.pos())
+
+    def pan_to_position(self, pos):
+        scene_pos = self.mapToScene(pos)
+        self.main_view.centerOn(scene_pos)
+        self.update_visible_rect()
+
 class SequenceNode(QGraphicsObject):
     def __init__(self, config, uuid_str=None):
         super().__init__()
@@ -1946,6 +1982,12 @@ class SequenceEditor(QGraphicsView):
         self.find_widget.find_previous.connect(lambda text: self.find_node(text, find_next=False))
         self.find_widget.closed.connect(self.on_find_widget_closed)
         self.last_found_node = None
+
+        # --- Minimap ---
+        self.minimap = MinimapView(self, self)
+        self.minimap.setFixedSize(200, 150)
+        self.horizontalScrollBar().valueChanged.connect(self.minimap.update_visible_rect)
+        self.verticalScrollBar().valueChanged.connect(self.minimap.update_visible_rect)
         
     def get_selected_nodes_data(self):
         """Returns a list of serialized data for all selected SequenceNode items."""
@@ -2067,6 +2109,10 @@ class SequenceEditor(QGraphicsView):
         super().resizeEvent(event)
         if self.find_widget:
             self.find_widget.move(self.width() - self.find_widget.width() - 10, 10)
+
+        # Position minimap in bottom-right corner
+        if self.minimap:
+            self.minimap.move(self.width() - self.minimap.width() - 10, self.height() - self.minimap.height() - 10)
 
     def show_find_widget(self):
         """Shows and focuses the find widget in the top-right corner of the tab content area."""
