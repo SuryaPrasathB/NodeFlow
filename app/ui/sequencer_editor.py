@@ -1250,6 +1250,7 @@ class MinimapView(QGraphicsView):
     def __init__(self, main_view, parent=None):
         super().__init__(parent)
         self.main_view = main_view
+        self.setScene(self.main_view.scene)
         self.setScene(self.main_view.scene())
         self.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.setInteractive(False)
