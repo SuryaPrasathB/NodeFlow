@@ -57,6 +57,8 @@ class CommentNode(QGraphicsTextItem):
         self.uuid = uuid_str or str(uuid.uuid4())
         self.setFlag(QGraphicsObject.GraphicsItemFlag.ItemIsMovable)
         self.setFlag(QGraphicsObject.GraphicsItemFlag.ItemIsSelectable)
+        self.setFlag(QGraphicsObject.GraphicsItemFlag.ItemIsFocusable)
+        self.setTextInteractionFlags(Qt.TextEditorInteraction)
         self.setDefaultTextColor(QColor("#FFFFFF"))
         font = QFont()
         font.setPointSize(12)
