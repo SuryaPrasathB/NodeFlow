@@ -1887,6 +1887,61 @@ class SequenceScene(QGraphicsScene):
             elif action == change_color_action:
                 self.set_node_color(item_at_pos)
             return
+        else:
+            # Context menu for the scene background
+            add_node_menu = menu.addMenu("Add Node")
+            add_method_action = add_node_menu.addAction("Method Call (from Server Browser)")
+            add_method_action.setEnabled(False)
+            add_delay_action = add_node_menu.addAction(NodeType.DELAY.value)
+            add_write_action = add_node_menu.addAction(NodeType.WRITE_VALUE.value)
+            add_static_action = add_node_menu.addAction(NodeType.STATIC_VALUE.value)
+            add_compute_action = add_node_menu.addAction(NodeType.COMPUTE.value) # NEW
+            add_node_menu.addSeparator()
+            add_run_sequence_action = add_node_menu.addAction(NodeType.RUN_SEQUENCE.value)
+            add_node_menu.addSeparator()
+            add_for_loop_action = add_node_menu.addAction(NodeType.FOR_LOOP.value)
+            add_while_loop_action = add_node_menu.addAction(NodeType.WHILE_LOOP.value)
+            add_node_menu.addSeparator()
+            # --- FEATURE: PARALLEL EXECUTION ---
+            add_fork_action = add_node_menu.addAction(NodeType.FORK.value)
+            add_join_action = add_node_menu.addAction(NodeType.JOIN.value)
+            add_node_menu.addSeparator()
+            add_get_var_action = add_node_menu.addAction(NodeType.GET_VARIABLE.value)
+            add_set_var_action = add_node_menu.addAction(NodeType.SET_VARIABLE.value)
+            add_node_menu.addSeparator()
+            add_python_script_action = add_node_menu.addAction(NodeType.PYTHON_SCRIPT.value)
+            add_node_menu.addSeparator()
+            add_comment_action = add_node_menu.addAction(NodeType.COMMENT.value)
+
+            action = menu.exec(event.screenPos())
+            pos = event.scenePos()
+
+            if action == add_delay_action:
+                self.add_new_node_requested.emit(NodeType.DELAY, pos)
+            elif action == add_write_action:
+                self.add_new_node_requested.emit(NodeType.WRITE_VALUE, pos)
+            elif action == add_static_action:
+                self.add_new_node_requested.emit(NodeType.STATIC_VALUE, pos)
+            elif action == add_run_sequence_action:
+                self.add_new_node_requested.emit(NodeType.RUN_SEQUENCE, pos)
+            elif action == add_comment_action:
+                self.add_new_node_requested.emit(NodeType.COMMENT, pos)
+            elif action == add_for_loop_action:
+                self.add_new_node_requested.emit(NodeType.FOR_LOOP, pos)
+            elif action == add_while_loop_action:
+                self.add_new_node_requested.emit(NodeType.WHILE_LOOP, pos)
+            elif action == add_compute_action:
+                self.add_new_node_requested.emit(NodeType.COMPUTE, pos)
+            elif action == add_get_var_action:
+                self.add_new_node_requested.emit(NodeType.GET_VARIABLE, pos)
+            elif action == add_set_var_action:
+                self.add_new_node_requested.emit(NodeType.SET_VARIABLE, pos)
+            elif action == add_fork_action:
+                self.add_new_node_requested.emit(NodeType.FORK, pos)
+            elif action == add_join_action:
+                self.add_new_node_requested.emit(NodeType.JOIN, pos)
+            elif action == add_python_script_action:
+                self.add_new_node_requested.emit(NodeType.PYTHON_SCRIPT, pos)
             
     def set_node_color(self, node):
         """Opens a color dialog and sets the custom color for the given node."""
@@ -1897,61 +1952,6 @@ class SequenceScene(QGraphicsScene):
             node.config['custom_color'] = color.name()
             node.update() # Repaint the node
             self.scene_changed.emit()
-
-        # Context menu for the scene background
-        add_node_menu = menu.addMenu("Add Node")
-        add_method_action = add_node_menu.addAction("Method Call (from Server Browser)")
-        add_method_action.setEnabled(False)
-        add_delay_action = add_node_menu.addAction(NodeType.DELAY.value)
-        add_write_action = add_node_menu.addAction(NodeType.WRITE_VALUE.value)
-        add_static_action = add_node_menu.addAction(NodeType.STATIC_VALUE.value)
-        add_compute_action = add_node_menu.addAction(NodeType.COMPUTE.value) # NEW
-        add_node_menu.addSeparator()
-        add_run_sequence_action = add_node_menu.addAction(NodeType.RUN_SEQUENCE.value)
-        add_node_menu.addSeparator()
-        add_for_loop_action = add_node_menu.addAction(NodeType.FOR_LOOP.value)
-        add_while_loop_action = add_node_menu.addAction(NodeType.WHILE_LOOP.value)
-        add_node_menu.addSeparator()
-        # --- FEATURE: PARALLEL EXECUTION ---
-        add_fork_action = add_node_menu.addAction(NodeType.FORK.value)
-        add_join_action = add_node_menu.addAction(NodeType.JOIN.value)
-        add_node_menu.addSeparator()
-        add_get_var_action = add_node_menu.addAction(NodeType.GET_VARIABLE.value)
-        add_set_var_action = add_node_menu.addAction(NodeType.SET_VARIABLE.value)
-        add_node_menu.addSeparator()
-        add_python_script_action = add_node_menu.addAction(NodeType.PYTHON_SCRIPT.value)
-        add_node_menu.addSeparator()
-        add_comment_action = add_node_menu.addAction(NodeType.COMMENT.value)
-
-        action = menu.exec(event.screenPos())
-        pos = event.scenePos()
-
-        if action == add_delay_action:
-            self.add_new_node_requested.emit(NodeType.DELAY, pos)
-        elif action == add_write_action:
-            self.add_new_node_requested.emit(NodeType.WRITE_VALUE, pos)
-        elif action == add_static_action:
-            self.add_new_node_requested.emit(NodeType.STATIC_VALUE, pos)
-        elif action == add_run_sequence_action:
-            self.add_new_node_requested.emit(NodeType.RUN_SEQUENCE, pos)
-        elif action == add_comment_action:
-            self.add_new_node_requested.emit(NodeType.COMMENT, pos)
-        elif action == add_for_loop_action:
-            self.add_new_node_requested.emit(NodeType.FOR_LOOP, pos)
-        elif action == add_while_loop_action:
-            self.add_new_node_requested.emit(NodeType.WHILE_LOOP, pos)
-        elif action == add_compute_action: 
-            self.add_new_node_requested.emit(NodeType.COMPUTE, pos)
-        elif action == add_get_var_action:
-            self.add_new_node_requested.emit(NodeType.GET_VARIABLE, pos)
-        elif action == add_set_var_action:
-            self.add_new_node_requested.emit(NodeType.SET_VARIABLE, pos)
-        elif action == add_fork_action:
-            self.add_new_node_requested.emit(NodeType.FORK, pos)
-        elif action == add_join_action:
-            self.add_new_node_requested.emit(NodeType.JOIN, pos)
-        elif action == add_python_script_action:
-            self.add_new_node_requested.emit(NodeType.PYTHON_SCRIPT, pos)
 
     def set_delete_mode(self, is_active):
         self.delete_mode = is_active
