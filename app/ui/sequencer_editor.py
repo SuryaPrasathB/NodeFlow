@@ -2056,8 +2056,8 @@ class SequenceEditor(QGraphicsView):
         # --- Minimap Toggle Button ---
         self.minimap_toggle_button = QPushButton(self)
         # Using placeholder icons as the requested ones were not found
-        self.icon_show_minimap = QIcon(resource_path('app/resources/icons/right_arrow.png'))
-        self.icon_hide_minimap = QIcon(resource_path('app/resources/icons/left_arrow.png'))
+        self.icon_show_minimap = QIcon(resource_path('app/resources/icons/arrow-expand-all.png'))
+        self.icon_hide_minimap = QIcon(resource_path('app/resources/icons/arrow-collapse-all.png'))
         self.minimap_toggle_button.setIcon(self.icon_hide_minimap)
         self.minimap_toggle_button.setFixedSize(30, 30)
         self.minimap_toggle_button.clicked.connect(self.toggle_minimap_visibility)
