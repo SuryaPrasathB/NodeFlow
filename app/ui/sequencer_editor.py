@@ -1948,6 +1948,7 @@ class Minimap(QGraphicsView):
         super().__init__(main_view.viewport())
         self.main_view = main_view
         self.setScene(self.main_view.scene)
+        self._is_panning = False
 
         self.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.setInteractive(True)
@@ -1973,6 +1974,7 @@ class Minimap(QGraphicsView):
 
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
+            self._is_panning = True
             scene_pos = self.mapToScene(event.pos())
             self.main_view.centerOn(scene_pos)
             event.accept()
@@ -1980,9 +1982,19 @@ class Minimap(QGraphicsView):
             super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
-        scene_pos = self.mapToScene(event.pos())
-        self.main_view.centerOn(scene_pos)
-        event.accept()
+        if self._is_panning:
+            scene_pos = self.mapToScene(event.pos())
+            self.main_view.centerOn(scene_pos)
+            event.accept()
+        else:
+            super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton:
+            self._is_panning = False
+            event.accept()
+        else:
+            super().mouseReleaseEvent(event)
 
 class SequenceEditor(QGraphicsView):       
     scene_changed = pyqtSignal()    
