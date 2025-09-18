@@ -1292,7 +1292,14 @@ class MainWindow(QMainWindow):
             original_size_data = widget_data.get("original_size")
             if original_size_data:
                 new_widget._original_size = QSize(original_size_data['width'], original_size_data['height'])
+
+            minimized_size_data = widget_data.get("minimized_size")
+            if minimized_size_data:
+                new_widget._minimized_size = QSize(minimized_size_data['width'], minimized_size_data['height'])
+
+            # This will now use the restored _minimized_size if available
             new_widget.toggle_minimize_state()
+
         new_widget.show()
         self.set_project_dirty(True)
         if not self.opcua_logic.is_connected:
