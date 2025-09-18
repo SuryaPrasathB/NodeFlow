@@ -1280,7 +1280,7 @@ class MainWindow(QMainWindow):
             new_widget.run_sequence_requested.connect(self.run_sequence_by_name)
             new_widget.stop_sequence_requested.connect(self.stop_sequence_loop)
         new_widget.request_delete.connect(self.delete_widget)
-        new_widget.widget_changed.connect(lambda: self.set_project_dirty(True))
+        new_widget.state_changed.connect(lambda: self.set_project_dirty(True))
         self.pages[self.current_page_index].append(new_widget)
         if geometry:
             new_widget.move(geometry['x'], geometry['y'])
