@@ -1340,6 +1340,7 @@ class SequenceNode(QGraphicsObject):
         path.addRoundedRect(self.boundingRect(), 10, 10)
 
         node_type = self.config.get('node_type')
+
         # --- Custom Color Logic ---
         if 'custom_color' in self.config:
             base_color = self.config['custom_color']
@@ -1694,6 +1695,7 @@ class SequenceScene(QGraphicsScene):
             toggle_breakpoint_action = menu.addAction("Toggle Breakpoint")
             change_color_action = menu.addAction("Change Color...")
             menu.addSeparator()
+
             action = menu.exec(event.screenPos())
 
             if action == toggle_breakpoint_action:
@@ -1707,11 +1709,12 @@ class SequenceScene(QGraphicsScene):
         """Opens a color dialog and sets the custom color for the given node."""
         current_color = QColor(node.config.get('custom_color', '#3c3f41'))
         color = QColorDialog.getColor(current_color, self.views()[0], "Choose Node Color")
+
         if color.isValid():
             node.config['custom_color'] = color.name()
             node.update() # Repaint the node
             self.scene_changed.emit()
-            
+
         # Context menu for the scene background
         add_node_menu = menu.addMenu("Add Node")
         add_method_action = add_node_menu.addAction("Method Call (from Server Browser)")
@@ -1950,13 +1953,11 @@ class Minimap(QGraphicsView):
         self._is_dragging_viewport = False
         self._drag_start_pos = QPointF()
 
-
         self.setRenderHint(QPainter.RenderHint.Antialiasing)
         self.setInteractive(True)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setStyleSheet("border: 1px solid #555;") # Add a border for visibility
-
 
     def get_viewport_polygon(self):
         """Calculates and returns the viewport polygon in minimap coordinates."""
@@ -2053,6 +2054,7 @@ class SequenceEditor(QGraphicsView):
         self.minimap = Minimap(self)
         self.horizontalScrollBar().valueChanged.connect(self.minimap.update)
         self.verticalScrollBar().valueChanged.connect(self.minimap.update)
+
         # --- Minimap Toggle Button ---
         self.minimap_toggle_button = QPushButton(self)
         # Using placeholder icons as the requested ones were not found
@@ -2191,26 +2193,27 @@ class SequenceEditor(QGraphicsView):
             self.minimap_toggle_button.setIcon(self.icon_hide_minimap)
 
     def resizeEvent(self, event):
-        """Ensure the find widget stays in the top-right corner."""
+        """Ensure widgets stay in their correct positions on resize."""
         super().resizeEvent(event)
         if self.find_widget:
             self.find_widget.move(self.width() - self.find_widget.width() - 10, 10)
         
-        # Position minimap in bottom-right corner
-        if self.minimap:
+        # Position minimap and its toggle button
+        if self.minimap and self.minimap_toggle_button:
             minimap_size = 200
-            self.minimap.setGeometry(
-                self.width() - minimap_size - 10,
-                self.height() - minimap_size - 10,
-                minimap_size,
-                minimap_size
-            )
-            self.minimap.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
-            
-        if self.minimap_toggle_button:
+            margin = 10
             button_size = self.minimap_toggle_button.height()
-            self.minimap_toggle_button.move(10, self.height() - button_size - 10)
 
+            # Position minimap in bottom-right corner
+            minimap_x = self.width() - minimap_size - margin
+            minimap_y = self.height() - minimap_size - margin
+            self.minimap.setGeometry(minimap_x, minimap_y, minimap_size, minimap_size)
+            self.minimap.fitInView(self.scene.sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
+
+            # Position toggle button just above the minimap
+            button_x = self.width() - button_size - margin
+            button_y = minimap_y - button_size - (margin / 2)
+            self.minimap_toggle_button.move(int(button_x), int(button_y))
 
     def show_find_widget(self):
         """Shows and focuses the find widget in the top-right corner of the tab content area."""
