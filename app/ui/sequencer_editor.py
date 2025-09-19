@@ -2670,6 +2670,9 @@ class SequenceEditor(QGraphicsView):
         self.minimap_toggle_button.setIcon(self.icon_hide_minimap)
         self.minimap_toggle_button.setFixedSize(30, 30)
         self.minimap_toggle_button.clicked.connect(self.toggle_minimap_visibility)
+        
+        self.minimap.hide()
+        self.minimap_toggle_button.hide()
 
     def get_selected_nodes_data(self):
         """Returns a list of serialized data for all selected SequenceNode items."""
