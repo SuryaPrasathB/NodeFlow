@@ -2377,9 +2377,6 @@ class DeleteItemsCommand(QUndoCommand):
                     data['end_socket_label'] = item.end_socket.label if hasattr(item.end_socket, 'label') else None
                 else:
                     data['end_socket_label'] = None
-                data['h_control_y1'] = item.h_control_y1
-                data['h_control_y2'] = item.h_control_y2
-                data['v_control_x'] = item.v_control_x
 
             # Only add items that could be serialized
             if 'type' in data:
@@ -2427,7 +2424,7 @@ class DeleteItemsCommand(QUndoCommand):
                         conn.set_condition(data['condition'])
                     self.scene.addItem(conn)
                     data['item'] = conn
-            elif isinstance(item, DataConnection):
+            elif data['type'] == 'data_connection':
                 start_node = nodes_map.get(data['start_uuid'])
                 end_node = nodes_map.get(data['end_uuid'])
                 if start_node and end_node:
@@ -2441,9 +2438,6 @@ class DeleteItemsCommand(QUndoCommand):
 
                     if start_node.data_out_socket and end_socket:
                         conn = DataConnection(start_node.data_out_socket, end_socket, self.scene, data.get('uuid'))
-                        conn.h_control_y1 = data.get('h_control_y1')
-                        conn.h_control_y2 = data.get('h_control_y2')
-                        conn.v_control_x = data.get('v_control_x')
                         conn.update_path()
                         self.scene.addItem(conn)
                         data['item'] = conn
