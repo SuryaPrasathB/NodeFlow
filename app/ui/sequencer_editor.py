@@ -15,8 +15,8 @@ import uuid
 from enum import Enum
 from PyQt6.QtWidgets import (QGraphicsView, QGraphicsScene, QGraphicsObject, QGraphicsTextItem,
                              QStyleOptionGraphicsItem, QWidget, QGraphicsPathItem, QStyle,
-                             QInputDialog, QLineEdit, QDialog, QFormLayout, QDialogButtonBox, QVBoxLayout, QMenu,
-                             QComboBox, QGraphicsProxyWidget, QToolTip, QColorDialog, QPushButton, QTextEdit, QMessageBox)
+                             QInputDialog, QLineEdit, QDialog, QFormLayout, QDialogButtonBox, QVBoxLayout, QHBoxLayout, QMenu,
+                             QComboBox, QGraphicsProxyWidget, QToolTip, QColorDialog, QPushButton, QTextEdit, QMessageBox, QLabel)
 from PyQt6.QtCore import Qt, QRectF, QPointF, pyqtSignal, QObject, QPropertyAnimation
 from PyQt6.QtGui import (QPainter, QColor, QBrush, QPen, QPainterPath, QKeyEvent,
                          QPainterPathStroker, QUndoCommand, QUndoStack, QFont, QTransform, QAction, QIcon)
