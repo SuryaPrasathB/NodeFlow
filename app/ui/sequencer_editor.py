@@ -16,7 +16,7 @@ from enum import Enum
 from PyQt6.QtWidgets import (QGraphicsView, QGraphicsScene, QGraphicsObject, QGraphicsTextItem,
                              QStyleOptionGraphicsItem, QWidget, QGraphicsPathItem, QStyle,
                              QInputDialog, QLineEdit, QDialog, QFormLayout, QDialogButtonBox, QVBoxLayout, QMenu,
-                             QComboBox, QGraphicsProxyWidget, QToolTip, QColorDialog, QPushButton, QTextEdit, QMessageBox, QLabel, QHBoxLayout)
+                             QComboBox, QGraphicsProxyWidget, QToolTip, QColorDialog, QPushButton, QTextEdit, QMessageBox, QLabel, QHBoxLayout, QRadioButton, QButtonGroup)
 from PyQt6.QtCore import Qt, QRectF, QPointF, pyqtSignal, QObject, QPropertyAnimation
 from PyQt6.QtGui import (QPainter, QColor, QBrush, QPen, QPainterPath, QKeyEvent,
                          QPainterPathStroker, QUndoCommand, QUndoStack, QFont, QTransform, QAction, QIcon)
@@ -64,14 +64,14 @@ class MySQLWriteNodeDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Configure MySQL Write Node")
         self.config = current_config or {}
-        self.setMinimumWidth(400)
+        self.setMinimumWidth(450)
 
         # UI Elements
         self.layout = QVBoxLayout(self)
         self.form_layout = QFormLayout()
 
         self.table_name_combo = QComboBox()
-        self.table_name_combo.setEditable(True) # Allow user to enter a new table name
+        self.table_name_combo.setEditable(True)
         self.table_name_combo.currentIndexChanged.connect(self.refresh_columns)
         self.refresh_button = QPushButton("Refresh")
         self.refresh_button.clicked.connect(self.refresh_tables_and_columns)
@@ -80,7 +80,8 @@ class MySQLWriteNodeDialog(QDialog):
         self.form_layout.addRow(self.refresh_button)
 
         self.mappings_layout = QVBoxLayout()
-        self.input_widgets = {} # {input_name: {'label': QLabel, 'combo': QComboBox}}
+        self.input_widgets = {}
+        self.key_button_group = QButtonGroup()
 
         self.add_input_button = QPushButton("Add Input Socket")
         self.add_input_button.clicked.connect(self.add_input_socket)
@@ -89,24 +90,24 @@ class MySQLWriteNodeDialog(QDialog):
         self.layout.addLayout(self.mappings_layout)
         self.layout.addWidget(self.add_input_button)
 
-        # Dialog Buttons
         button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         button_box.accepted.connect(self.accept)
         button_box.rejected.connect(self.reject)
         self.layout.addWidget(button_box)
 
-        # Populate with existing config
         self.available_columns = []
         self.populate_inputs()
-        self.refresh_tables_and_columns() # Initial fetch
+        self.refresh_tables_and_columns()
 
     def populate_inputs(self):
-        # Clear existing widgets
         for i in reversed(range(self.mappings_layout.count())):
             widget_item = self.mappings_layout.itemAt(i)
             if widget_item and widget_item.widget():
                 widget_item.widget().setParent(None)
         self.input_widgets.clear()
+        # Clear the button group before repopulating
+        for button in self.key_button_group.buttons():
+            self.key_button_group.removeButton(button)
 
         inputs = self.config.get('inputs', [])
         for input_name in inputs:
@@ -119,10 +120,14 @@ class MySQLWriteNodeDialog(QDialog):
         combo = QComboBox()
         combo.addItems(self.available_columns)
 
-        # Set current selection
         current_mapping = self.config.get('mappings', {}).get(input_name)
         if current_mapping in self.available_columns:
             combo.setCurrentText(current_mapping)
+
+        radio_button = QRadioButton("Key")
+        self.key_button_group.addButton(radio_button)
+        if self.config.get('unique_key_input') == input_name:
+            radio_button.setChecked(True)
 
         remove_button = QPushButton("X")
         remove_button.setFixedWidth(30)
@@ -132,14 +137,14 @@ class MySQLWriteNodeDialog(QDialog):
         h_layout.addWidget(label)
         h_layout.addWidget(QLabel("-> Column:"))
         h_layout.addWidget(combo)
+        h_layout.addWidget(radio_button)
         h_layout.addWidget(remove_button)
 
         container_widget = QWidget()
         container_widget.setLayout(h_layout)
         self.mappings_layout.addWidget(container_widget)
 
-        self.input_widgets[input_name] = {'label_widget': label, 'combo': combo, 'layout_widget': container_widget}
-
+        self.input_widgets[input_name] = {'label_widget': label, 'combo': combo, 'radio': radio_button, 'layout_widget': container_widget}
 
     def add_input_socket(self):
         input_name, ok = QInputDialog.getText(self, "Add Input", "Enter new input socket name:")
@@ -151,40 +156,33 @@ class MySQLWriteNodeDialog(QDialog):
     def remove_input_socket(self, input_name):
         if input_name in self.config.get('inputs', []):
             self.config['inputs'].remove(input_name)
-            if input_name in self.config.get('mappings', {}):
-                del self.config['mappings'][input_name]
+            self.config.get('mappings', {}).pop(input_name, None)
+            if self.config.get('unique_key_input') == input_name:
+                self.config['unique_key_input'] = None
 
             if input_name in self.input_widgets:
                 widget_info = self.input_widgets.pop(input_name)
+                # Also remove the radio button from the group
+                self.key_button_group.removeButton(widget_info['radio'])
                 widget_info['layout_widget'].setParent(None)
 
-
     def refresh_tables_and_columns(self):
-        """Refreshes both the table list and the column list."""
         self.refresh_tables()
         self.refresh_columns()
 
     def refresh_tables(self):
-        """Fetches the list of tables from the database and populates the table combo box."""
         settings = QSettings("MyCompany", "NodeFlow")
-        host = settings.value("mysql/host", "")
-        user = settings.value("mysql/user", "")
-        password = settings.value("mysql/password", "")
-        database = settings.value("mysql/database", "")
-
+        host, user, password, database = settings.value("mysql/host", ""), settings.value("mysql/user", ""), settings.value("mysql/password", ""), settings.value("mysql/database", "")
         if not all([host, user, database]):
             QMessageBox.warning(self, "MySQL Not Configured", "Please configure MySQL connection in Application Settings.")
             return
-
         manager = MySQLManager(host, user, password, database)
         success, msg = manager.connect()
         if not success:
             QMessageBox.critical(self, "Connection Failed", f"Could not connect to database.\n{msg}")
             return
-
         tables = manager.get_all_tables()
         manager.close()
-
         if isinstance(tables, list):
             current_table = self.config.get('table_name', '')
             self.table_name_combo.clear()
@@ -195,33 +193,22 @@ class MySQLWriteNodeDialog(QDialog):
                 self.table_name_combo.setCurrentIndex(0)
 
     def refresh_columns(self):
-        """Fetches columns for the selected table and updates the column combo boxes."""
         table_name = self.table_name_combo.currentText()
         if not table_name:
             self.available_columns = []
         else:
             settings = QSettings("MyCompany", "NodeFlow")
-            host = settings.value("mysql/host", "")
-            user = settings.value("mysql/user", "")
-            password = settings.value("mysql/password", "")
-            database = settings.value("mysql/database", "")
-
+            host, user, password, database = settings.value("mysql/host", ""), settings.value("mysql/user", ""), settings.value("mysql/password", ""), settings.value("mysql/database", "")
             if not all([host, user, database]):
                 self.available_columns = []
             else:
                 manager = MySQLManager(host, user, password, database)
                 success, msg = manager.connect()
-                if not success:
-                    self.available_columns = []
+                if not success: self.available_columns = []
                 else:
                     columns = manager.get_table_columns(table_name)
-                    if isinstance(columns, str) and columns.startswith("Error:"):
-                        self.available_columns = []
-                    else:
-                        self.available_columns = columns
+                    self.available_columns = [] if isinstance(columns, str) and columns.startswith("Error:") else columns
                     manager.close()
-
-        # Update all comboboxes
         for widget_info in self.input_widgets.values():
             combo = widget_info['combo']
             current_selection = combo.currentText()
@@ -232,17 +219,15 @@ class MySQLWriteNodeDialog(QDialog):
 
     def get_config(self):
         self.config['table_name'] = self.table_name_combo.currentText()
-
-        # Update inputs and mappings from the widgets
-        new_inputs = []
-        new_mappings = {}
+        new_inputs, new_mappings = [], {}
+        self.config['unique_key_input'] = None
         for old_name, widget_info in self.input_widgets.items():
-            # The key in input_widgets is the original name. The new name is in the QLineEdit.
             new_name = widget_info['label_widget'].text()
             if new_name:
                 new_inputs.append(new_name)
                 new_mappings[new_name] = widget_info['combo'].currentText()
-
+                if widget_info['radio'].isChecked():
+                    self.config['unique_key_input'] = new_name
         self.config['inputs'] = new_inputs
         self.config['mappings'] = new_mappings
         self.config['label'] = f"Write to {self.config['table_name']}"
@@ -1350,9 +1335,10 @@ class SequenceEngine(QObject):
         Executes a 'MySQL Write' node.
 
         It connects to the configured MySQL database, resolves input values,
-        and inserts a new row into the specified table. It will dynamically
-        add columns to the table if they are mapped in the node but do not
-        exist in the database.
+        and inserts or updates a row in the specified table.
+        - If a 'Key' is designated in the node config, it performs an UPSERT.
+        - Otherwise, it performs a standard INSERT.
+        It will also dynamically add columns to the table if they do not exist.
         """
         try:
             config = node_data['config']
@@ -1363,13 +1349,8 @@ class SequenceEngine(QObject):
             if not table_name or not mappings:
                 raise ValueError("MySQL Write node is not configured.")
 
-            # Load MySQL settings from QSettings
             settings = QSettings("MyCompany", "NodeFlow")
-            host = settings.value("mysql/host")
-            user = settings.value("mysql/user")
-            password = settings.value("mysql/password")
-            database = settings.value("mysql/database")
-
+            host, user, password, database = settings.value("mysql/host"), settings.value("mysql/user"), settings.value("mysql/password"), settings.value("mysql/database")
             if not all([host, user, database]):
                 raise ConnectionError("MySQL connection details are not configured in settings.")
 
@@ -1379,18 +1360,12 @@ class SequenceEngine(QObject):
                 raise ConnectionError(f"MySQL connection failed: {conn_msg}")
 
             try:
-                # 1. Gather all data from input sockets
                 column_values = {}
                 for input_name in inputs:
                     column_name = mappings.get(input_name)
-                    if not column_name: continue # Skip if not mapped
+                    if not column_name: continue
 
-                    # Find the source node for this input socket
-                    source_node_uuid = None
-                    for conn in self.all_sequences[self.current_sequence_name].get('data_connections', []):
-                        if conn['end_node_uuid'] == node_data['uuid'] and conn.get('end_socket_label') == input_name:
-                            source_node_uuid = conn['start_node_uuid']
-                            break
+                    source_node_uuid = next((conn['start_node_uuid'] for conn in self.all_sequences[self.current_sequence_name].get('data_connections', []) if conn['end_node_uuid'] == node_data['uuid'] and conn.get('end_socket_label') == input_name), None)
 
                     if source_node_uuid and source_node_uuid in self.execution_context:
                         column_values[column_name] = self.execution_context[source_node_uuid]
@@ -1402,9 +1377,8 @@ class SequenceEngine(QObject):
                     logging.warning("MySQL Write node has no values to insert.")
                     return True, True
 
-                # 2. Ensure table and columns exist
                 db_columns = manager.get_table_columns(table_name)
-                if isinstance(db_columns, str) and "1146" in db_columns: # Table doesn't exist
+                if isinstance(db_columns, str) and "1146" in db_columns:
                     manager.execute_query(f"CREATE TABLE `{table_name}` (id INT AUTO_INCREMENT PRIMARY KEY);")
                     db_columns = []
 
@@ -1412,19 +1386,34 @@ class SequenceEngine(QObject):
                     if col_name not in db_columns:
                         logging.info(f"Column '{col_name}' not found in table '{table_name}'. Adding it.")
                         add_success, add_msg = manager.add_column_to_table(table_name, col_name, "VARCHAR(255)")
-                        if not add_success:
-                            raise Exception(f"Failed to add column '{col_name}': {add_msg}")
+                        if not add_success: raise Exception(f"Failed to add column '{col_name}': {add_msg}")
 
-                # 3. Construct and execute INSERT query
-                columns = ', '.join([f"`{c}`" for c in column_values.keys()])
+                # UPSERT vs INSERT logic
+                unique_key_input = config.get('unique_key_input')
+                key_column = mappings.get(unique_key_input) if unique_key_input else None
+
+                columns_str = ', '.join([f"`{c}`" for c in column_values.keys()])
                 placeholders = ', '.join(['%s'] * len(column_values))
-                values = tuple(column_values.values())
+                values_tuple = tuple(column_values.values())
 
-                query = f"INSERT INTO `{table_name}` ({columns}) VALUES ({placeholders})"
-                logging.info(f"Executing MySQL Write: {query} with values {values}")
-                result = manager.execute_query(query, values)
+                if key_column and key_column in column_values:
+                    # UPSERT
+                    update_pairs = [f"`{col}` = VALUES(`{col}`)" for col in column_values.keys() if col != key_column]
+                    if not update_pairs:
+                        logging.warning(f"UPSERT for key '{key_column}' has no other columns to update. Performing INSERT instead.")
+                        query = f"INSERT IGNORE INTO `{table_name}` ({columns_str}) VALUES ({placeholders})"
+                    else:
+                        update_clause = ', '.join(update_pairs)
+                        query = f"INSERT INTO `{table_name}` ({columns_str}) VALUES ({placeholders}) ON DUPLICATE KEY UPDATE {update_clause}"
+                    logging.info(f"Executing MySQL UPSERT: {query} with values {values_tuple}")
+                else:
+                    # INSERT
+                    query = f"INSERT INTO `{table_name}` ({columns_str}) VALUES ({placeholders})"
+                    logging.info(f"Executing MySQL INSERT: {query} with values {values_tuple}")
+
+                result = manager.execute_query(query, values_tuple)
                 if isinstance(result, str) and result.startswith("Error:"):
-                    raise Exception(f"Failed to insert data: {result}")
+                    raise Exception(f"Failed to write to database: {result}")
 
             finally:
                 manager.close()
@@ -2119,6 +2108,32 @@ class SequenceNode(QGraphicsObject):
             title_text += " *"
         self.title.setPlainText(title_text)
         self.center_title()
+
+    def update_sockets(self):
+        """
+        Clears and recreates data sockets based on the node's current configuration.
+        This is essential for nodes where the number of inputs/outputs can be
+        changed dynamically.
+        """
+        # Clear existing input data sockets and their connections
+        for socket in self.data_in_sockets.values():
+            for conn in socket.connections[:]:
+                conn.destroy()
+            if self.scene():
+                self.scene().removeItem(socket)
+        self.data_in_sockets.clear()
+
+        node_type = self.config.get('node_type')
+
+        # Re-create sockets for specific node types that support dynamic configuration
+        if node_type == NodeType.MYSQL_WRITE.value:
+            inputs = self.config.get('inputs', [])
+            num_inputs = len(inputs)
+            for i, input_name in enumerate(inputs):
+                socket = DataSocket(self, is_output=False, label=input_name)
+                # Distribute sockets along the top edge
+                socket.setPos(self.width * (i + 1) / (num_inputs + 1), 0)
+                self.data_in_sockets[input_name] = socket
 
     def serialize(self):
         """
@@ -2928,6 +2943,9 @@ class SequenceScene(QGraphicsScene):
                 if new_config:
                     item.config = new_config
                     item.update_title()
+                    # After updating config, check if sockets need to be redrawn
+                    if hasattr(item, 'update_sockets'):
+                        item.update_sockets()
                     self.scene_changed.emit()
         super().mouseDoubleClickEvent(event)
 
