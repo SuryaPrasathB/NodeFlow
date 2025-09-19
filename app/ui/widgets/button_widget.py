@@ -5,10 +5,23 @@ from .base_widget import BaseWidget
 
 class ButtonWidget(BaseWidget):
     """
-    A widget to call an OPC-UA method. When minimized, it becomes a single
-    button that shows temporary, animated feedback on click.
+    A widget to call an OPC UA method with an optional argument.
+
+    When maximized, it displays a button, a checkbox to enable an argument
+    input field, and a label to show the result of the method call.
+    When minimized, it becomes a single, compact button that provides
+    temporary, animated feedback upon being clicked.
     """
     def __init__(self, config, opcua_logic, parent=None, async_runner=None):
+        """
+        Initializes the ButtonWidget.
+
+        Args:
+            config (dict): The configuration dictionary for the widget.
+            opcua_logic (OpcuaClientLogic): The OPC UA logic instance.
+            parent (QWidget, optional): The parent widget. Defaults to None.
+            async_runner (AsyncRunner, optional): The runner for async tasks. Defaults to None.
+        """
         super().__init__(config, opcua_logic, parent, async_runner)
         
         # --- Standard (Maximized) View ---
@@ -37,15 +50,12 @@ class ButtonWidget(BaseWidget):
         self.argument_input.setPlaceholderText("Enter argument value")
 
         # --- Minimized View ---
-        # FIX: Use a layout with margins to create a draggable border
         minimized_layout = QVBoxLayout(self.minimized_widget)
-        # The margin creates the border area that can be used for dragging
         minimized_layout.setContentsMargins(8, 8, 8, 8) 
         self.minimized_button = QPushButton(button_text)
         self.minimized_button.setStyleSheet("font-size: 11pt;")
         minimized_layout.addWidget(self.minimized_button)
         
-        # FIX: Style the container to make the border visible
         self.minimized_widget.setStyleSheet("""
             #minimizedWidget {
                 background-color: #3c3f41;
@@ -65,13 +75,25 @@ class ButtonWidget(BaseWidget):
         self.popup_fade_out_anim = None
 
     async def setup_widget(self):
+        """Finalizes widget setup after the OPC UA node is found."""
         self.status_label.setText(f"Ready to call method on {self.node.nodeid.to_string()}")
 
     def on_call_button_clicked(self):
+        """
+        Slot for the button's clicked signal.
+
+        Submits the `call_method` coroutine to the async runner.
+        """
         if self.node and self.async_runner:
             self.async_runner.submit(self.call_method())
 
     async def call_method(self):
+        """
+        Performs the asynchronous OPC UA method call.
+
+        It retrieves the method name and argument (if any), calls the method,
+        and then routes the result to the appropriate display method.
+        """
         if not self.is_minimized:
             self.result_label.setText("Result: Calling...")
         
@@ -84,6 +106,7 @@ class ButtonWidget(BaseWidget):
         if self.has_argument_checkbox.isChecked():
             arg_text = self.argument_input.text()
             try:
+                # Attempt to convert to float, otherwise use as string
                 arg_value = float(arg_text)
             except ValueError:
                 arg_value = arg_text
@@ -101,6 +124,15 @@ class ButtonWidget(BaseWidget):
             self.show_result(f"<font color='red'><b>Call Error:</b><br>{e}</font>")
     
     def show_result(self, text):
+        """
+        Displays the result of the method call.
+
+        Routes the result to the static label if maximized, or to the animated
+        popup if minimized.
+
+        Args:
+            text (str): The HTML-formatted result string to display.
+        """
         if self.is_minimized:
             self.show_animated_result(text)
         else:
@@ -108,9 +140,19 @@ class ButtonWidget(BaseWidget):
             self.result_clear_timer.start(4000)
 
     def clear_result_label(self):
+        """Clears the result label in the maximized view after a delay."""
         self.result_label.setText("Result: N/A")
 
     def show_animated_result(self, text):
+        """
+        Creates and shows a temporary, animated popup label for feedback.
+
+        The popup appears near the widget, fades in, stays for a few seconds,
+        and then fades out.
+
+        Args:
+            text (str): The HTML-formatted result string to display.
+        """
         if self.animated_popup:
             self.clear_animated_popup()
 
@@ -149,6 +191,7 @@ class ButtonWidget(BaseWidget):
         self.animated_popup.fade_in = fade_in
     
     def clear_animated_popup(self):
+        """Safely deletes the animated popup widget and its animations."""
         if self.animated_popup:
             self.animated_popup.deleteLater()
             self.animated_popup = None

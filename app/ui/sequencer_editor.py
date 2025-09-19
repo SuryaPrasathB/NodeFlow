@@ -18,7 +18,7 @@ from PyQt6.QtWidgets import (QGraphicsView, QGraphicsScene, QGraphicsObject, QGr
                              QInputDialog, QLineEdit, QDialog, QFormLayout, QDialogButtonBox, QVBoxLayout, QMenu,
                              QComboBox, QGraphicsProxyWidget, QToolTip, QColorDialog, QPushButton)
 from PyQt6.QtCore import Qt, QRectF, QPointF, pyqtSignal, QObject, QPropertyAnimation
-from PyQt6.QtGui import (QPainter, QColor, QBrush, QPen, QPainterPath, QKeyEvent, 
+from PyQt6.QtGui import (QPainter, QColor, QBrush, QPen, QPainterPath, QKeyEvent,
                          QPainterPathStroker, QUndoCommand, QUndoStack, QFont, QTransform, QAction, QIcon)
 
 # --- Local Imports ---
@@ -31,6 +31,7 @@ from app.utils.paths import resource_path
 from .python_script_dialog import PythonScriptDialog
 
 class DebugState(Enum):
+    """Enumeration for the different states of the sequence debugger."""
     IDLE = 0
     RUNNING = 1
     PAUSED = 2
@@ -46,15 +47,20 @@ class NodeType(Enum):
     FOR_LOOP = "For Loop"
     WHILE_LOOP = "While Loop"
     COMPUTE = "Compute"
-    # --- FEATURE: PARALLEL EXECUTION ---
     FORK = "Fork"
     JOIN = "Join"
-    # --- FEATURE: GLOBAL VARIABLES ---
     SET_VARIABLE = "Set Variable"
     GET_VARIABLE = "Get Variable"
     PYTHON_SCRIPT = "Python Script"
 
 class CommentNode(QGraphicsTextItem):
+    """
+    A QGraphicsTextItem for adding editable, movable comments to the scene.
+
+    Args:
+        text (str): The initial text of the comment.
+        uuid_str (str, optional): The UUID for the node. If None, a new one is generated.
+    """
     def __init__(self, text, uuid_str=None):
         super().__init__(text)
         self.uuid = uuid_str or str(uuid.uuid4())
@@ -68,6 +74,12 @@ class CommentNode(QGraphicsTextItem):
         self.setFont(font)
 
     def serialize(self):
+        """
+        Serializes the comment node's state to a dictionary.
+
+        Returns:
+            dict: A dictionary containing the node's UUID, type, text, and position.
+        """
         return {
             'uuid': self.uuid,
             'config': {'node_type': NodeType.COMMENT.value, 'text': self.toPlainText()},
@@ -75,7 +87,15 @@ class CommentNode(QGraphicsTextItem):
         }
 
 class WhileLoopDialog(QDialog):
+    """A dialog for configuring the condition of a While Loop node."""
     def __init__(self, parent=None, current_config=None):
+        """
+        Initializes the WhileLoopDialog.
+
+        Args:
+            parent (QWidget, optional): The parent widget. Defaults to None.
+            current_config (dict, optional): The existing configuration to populate the dialog with.
+        """
         super().__init__(parent)
         self.setWindowTitle("Configure While Loop Condition")
         self.config = current_config or {}
@@ -97,16 +117,14 @@ class WhileLoopDialog(QDialog):
         self.value_input.setText(str(self.config.get('while_condition_value', '')))
 
     def get_config(self):
-        self.config['while_negate_condition'] = (self.condition_type_combo.currentText() == "is not")
-        self.config['while_condition_value'] = self.value_input.text()
-        negate_str = "!" if self.config['while_negate_condition'] else ""
-        self.config['label'] = f"While ({negate_str}{self.config['while_condition_value']})"
-        return self.config
+        """
+        Retrieves the updated configuration from the dialog.
 
-    def get_config(self):
+        Returns:
+            dict: The updated configuration dictionary for the node.
+        """
         self.config['while_negate_condition'] = (self.condition_type_combo.currentText() == "is not")
         self.config['while_condition_value'] = self.value_input.text()
-        # Update the label for the node title
         negate_str = "!" if self.config['while_negate_condition'] else ""
         self.config['label'] = f"While ({negate_str}{self.config['while_condition_value']})"
         return self.config
@@ -114,10 +132,20 @@ class WhileLoopDialog(QDialog):
 class RunSequenceDialog(QDialog):
     """A dialog for configuring the RunSequenceNode."""
     def __init__(self, parent=None, current_config=None, available_sequences=None, current_sequence=None):
+        """
+        Initializes the RunSequenceDialog.
+
+        Args:
+            parent (QWidget, optional): The parent widget.
+            current_config (dict, optional): The existing node configuration.
+            available_sequences (list[str], optional): A list of all sequence names in the project.
+            current_sequence (str, optional): The name of the sequence this node belongs to,
+                                              to prevent recursive loops.
+        """
         super().__init__(parent)
         self.setWindowTitle("Configure Run Sequence Node")
         self.config = current_config or {}
-        
+
         layout = QVBoxLayout(self)
         form_layout = QFormLayout()
 
@@ -125,9 +153,9 @@ class RunSequenceDialog(QDialog):
         if available_sequences:
             filtered_sequences = [name for name in available_sequences if name != current_sequence]
             self.sequence_combo.addItems(filtered_sequences)
-        
+
         form_layout.addRow("Sequence to Run:", self.sequence_combo)
-        
+
         layout.addLayout(form_layout)
         button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         button_box.accepted.connect(self.accept)
@@ -138,7 +166,12 @@ class RunSequenceDialog(QDialog):
             self.sequence_combo.setCurrentText(self.config['sequence_name'])
 
     def get_config(self):
-        """Returns the updated configuration for the node."""
+        """
+        Retrieves the updated configuration from the dialog.
+
+        Returns:
+            dict: The updated configuration dictionary, or None if validation fails.
+        """
         selected_sequence = self.sequence_combo.currentText()
         if not selected_sequence:
             show_error_message("Configuration Error", "You must select a sequence to run.")
@@ -151,6 +184,13 @@ class RunSequenceDialog(QDialog):
 class StaticValueDialog(QDialog):
     """A simple dialog for configuring the StaticValueNode."""
     def __init__(self, parent=None, current_config=None):
+        """
+        Initializes the StaticValueDialog.
+
+        Args:
+            parent (QWidget, optional): The parent widget.
+            current_config (dict, optional): The existing node configuration.
+        """
         super().__init__(parent)
         self.setWindowTitle("Configure Static Value Node")
         self.config = current_config or {}
@@ -166,6 +206,12 @@ class StaticValueDialog(QDialog):
         layout.addWidget(button_box)
 
     def get_config(self):
+        """
+        Retrieves the updated configuration from the dialog.
+
+        Returns:
+            dict: The updated configuration dictionary.
+        """
         self.config['static_value'] = self.value_input.text()
         self.config['label'] = f"Value: {self.config['static_value']}"
         return self.config
@@ -173,6 +219,13 @@ class StaticValueDialog(QDialog):
 class WriteValueDialog(QDialog):
     """A simple dialog for configuring the WriteValueNode."""
     def __init__(self, parent=None, current_config=None):
+        """
+        Initializes the WriteValueDialog.
+
+        Args:
+            parent (QWidget, optional): The parent widget.
+            current_config (dict, optional): The existing node configuration.
+        """
         super().__init__(parent)
         self.setWindowTitle("Configure Write Value Node")
         self.config = current_config or {}
@@ -191,11 +244,25 @@ class WriteValueDialog(QDialog):
         layout.addWidget(button_box)
 
     def get_config(self):
+        """
+        Retrieves the updated configuration from the dialog.
+
+        Returns:
+            dict: The updated configuration dictionary.
+        """
         self.config['node_id'] = self.node_id_input.text()
         self.config['value_to_write'] = self.value_input.text()
         return self.config
-    
+
 class Port(QGraphicsObject):
+    """
+    A visual port on a SequenceNode for execution flow connections.
+
+    Args:
+        parent (QGraphicsItem): The parent node.
+        is_output (bool, optional): True if this is an output port, False for input.
+        label (str, optional): An optional label for the port (e.g., for loop outputs).
+    """
     def __init__(self, parent, is_output=False, label=None):
         super().__init__(parent)
         self.is_output, self.radius = is_output, 6
@@ -210,17 +277,40 @@ class Port(QGraphicsObject):
             else:
                 self.label_item.setPos(-self.radius - 5 - self.label_item.boundingRect().width(), -self.label_item.boundingRect().height() / 2)
 
-    def boundingRect(self): return QRectF(-self.radius, -self.radius, 2 * self.radius, 2 * self.radius)
+    def boundingRect(self):
+        """Returns the bounding rectangle of the port."""
+        return QRectF(-self.radius, -self.radius, 2 * self.radius, 2 * self.radius)
+
     def paint(self, painter, option, widget=None):
+        """Paints the port as a circle."""
         painter.setBrush(QBrush(QColor("#5a98d1")))
         painter.setPen(QPen(Qt.GlobalColor.white, 1))
         painter.drawEllipse(-self.radius, -self.radius, 2 * self.radius, 2 * self.radius)
+
     def itemChange(self, change, value):
+        """
+        Updates connected connections when the port's position changes.
+
+        Args:
+            change (QGraphicsItem.GraphicsItemChange): The type of change.
+            value: The new value.
+
+        Returns:
+            The result of the parent's itemChange method.
+        """
         if change == QGraphicsObject.GraphicsItemChange.ItemScenePositionHasChanged:
             for conn in self.connections: conn.update_path()
         return value
 
 class Connection(QGraphicsPathItem):
+    """
+    A visual execution connection between two Ports.
+
+    Args:
+        start_port (Port): The port where the connection starts.
+        end_port (Port): The port where the connection ends.
+        scene (QGraphicsScene): The scene containing the connection.
+    """
     def __init__(self, start_port, end_port, scene):
         super().__init__()
         self.start_port, self.end_port, self._scene = start_port, end_port, scene
@@ -234,13 +324,36 @@ class Connection(QGraphicsPathItem):
         self.update_path()
 
     def shape(self):
+        """
+        Returns a wider shape for easier mouse interaction.
+
+        Returns:
+            QPainterPath: The stroked shape of the connection.
+        """
         stroker = QPainterPathStroker(); stroker.setWidth(10)
         return stroker.createStroke(self.path())
 
     def set_state(self, new_state):
+        """
+        Sets the visual state of the connection (e.g., 'active', 'idle').
+
+        Args:
+            new_state (str): The new state.
+        """
         self.state = new_state; self.update()
 
     def paint(self, painter, option, widget=None):
+        """
+        Paints the connection path.
+
+        The color changes based on its execution state (idle/active) or
+        if it is selected.
+
+        Args:
+            painter (QPainter): The painter to use for drawing.
+            option (QStyleOptionGraphicsItem): Provides style options.
+            widget (QWidget, optional): The widget being painted on. Defaults to None.
+        """
         color = "#f0e68c" if self.state == "active" else "#ffffff"
         width = 3 if self.state == "active" else 2
         pen = QPen(QColor(color), width)
@@ -248,6 +361,12 @@ class Connection(QGraphicsPathItem):
         painter.setPen(pen); painter.drawPath(self.path())
 
     def set_condition(self, condition):
+        """
+        Sets the condition for this connection and updates the label.
+
+        Args:
+            condition (dict): The condition dictionary.
+        """
         self.condition = condition
         label_text = ''
         if self.condition:
@@ -255,12 +374,13 @@ class Connection(QGraphicsPathItem):
                 expr = self.condition.get('expression', '')
                 if len(expr) > 20: expr = expr[:17] + '...'
                 label_text = f"fx: {expr}" if expr else ""
-            else: 
+            else:
                 op = self.condition.get('operator', '')
                 if op != "No Condition": label_text = op
         self.condition_label.setPlainText(label_text); self.update_path()
 
     def update_path(self):
+        """Recalculates and sets the cubic bezier path for the connection."""
         path = QPainterPath()
         start_pos = self.start_port.scenePos()
         end_pos = self.end_port.scenePos() if self.end_port else self._scene.mouse_move_pos
@@ -275,26 +395,53 @@ class Connection(QGraphicsPathItem):
         self.condition_label.setPos(label_pos.x() - label_rect.width() / 2, label_pos.y() - label_rect.height() / 2 - 15)
 
     def destroy(self):
+        """Removes the connection from its ports and the scene."""
         if self.start_port and self in self.start_port.connections: self.start_port.connections.remove(self)
         if self.end_port and self in self.end_port.connections: self.end_port.connections.remove(self)
         self._scene.removeItem(self)
 
     def serialize(self):
+        """
+        Serializes the connection's state to a dictionary.
+
+        Returns:
+            dict or None: A dictionary with connection data, or None if incomplete.
+        """
         if not self.start_port or not self.end_port: return None
         return {'start_node_uuid': self.start_port.parentItem().uuid, 'end_node_uuid': self.end_port.parentItem().uuid, 'condition': self.condition}
 
 class SequenceEngine(QObject):
-    execution_paused = pyqtSignal(str, str) # sequence_name, node_uuid
-    
     """
-    The backend logic engine that executes a sequence graph. It is now decoupled
-    from the UI and emits signals with identifiers for MainWindow to route.
+    The backend logic engine that executes a sequence graph.
+
+    This class is decoupled from the UI and handles the step-by-step execution
+    of a sequence. It emits signals to notify the UI about state changes,
+    pauses, and completion.
+
+    Attributes:
+        execution_paused (pyqtSignal): Emitted when the execution pauses at a breakpoint.
+                                       Passes sequence_name (str) and node_uuid (str).
+        execution_finished (pyqtSignal): Emitted when a sequence completes or is stopped.
+                                         Passes sequence_name (str) and was_stopped (bool).
+        node_state_changed (pyqtSignal): Emitted when a node's visual state changes.
+                                         Passes sequence_name, node_uuid, and state (str).
+        connection_state_changed (pyqtSignal): Emitted when a connection's visual state changes.
+                                               Passes sequence_name, start_uuid, end_uuid, and state (str).
     """
+    execution_paused = pyqtSignal(str, str)
     execution_finished = pyqtSignal(str, bool)
-    node_state_changed = pyqtSignal(str, str, str)  # Emits sequence_name, node_uuid, state
-    connection_state_changed = pyqtSignal(str, str, str, str)  # Emits sequence_name, start_uuid, end_uuid, state
+    node_state_changed = pyqtSignal(str, str, str)
+    connection_state_changed = pyqtSignal(str, str, str, str)
 
     def __init__(self, opcua_logic, async_runner, global_variables):
+        """
+        Initializes the SequenceEngine.
+
+        Args:
+            opcua_logic (OpcuaClientLogic): The OPC-UA logic handler.
+            async_runner (AsyncRunner): The utility for running async tasks.
+            global_variables (dict): A dictionary for storing global variables.
+        """
         super().__init__()
         self.opcua_logic = opcua_logic
         self.async_runner = async_runner
@@ -310,27 +457,38 @@ class SequenceEngine(QObject):
         self._pause_event = asyncio.Event()
         self._step_event = asyncio.Event()
         self._step_into = False
-        
+
     def resume(self):
+        """Resumes execution if it is currently paused."""
         logging.debug(f"RESUME BUTTON CLICKED. Current state: {self.debug_state}")
         if self.debug_state == DebugState.PAUSED:
-            self._pause_event.set() # Release the pause
+            self._pause_event.set()
 
     def step_over(self):
+        """Executes the current node and pauses at the next one in the same sequence."""
         logging.debug("STEP OVER BUTTON CLICKED. Current state: {}".format(self.debug_state))
         if self.debug_state == DebugState.PAUSED:
             self._step_into = False
-            self._step_event.set() # Allow one step
+            self._step_event.set()
             self._pause_event.set()
 
     def step_into(self):
+        """Executes the current node, stepping into sub-sequences if applicable."""
         logging.debug("STEP INTO BUTTON CLICKED. Current state: {}".format(self.debug_state))
         if self.debug_state == DebugState.PAUSED:
             self._step_into = True
-            self._step_event.set() # Allow one step, including sub-sequences
+            self._step_event.set()
             self._pause_event.set()
 
     def run(self, sequence_name, all_sequences, loop=False):
+        """
+        Starts the execution of a sequence.
+
+        Args:
+            sequence_name (str): The name of the sequence to run.
+            all_sequences (dict): A dictionary containing all sequences in the project.
+            loop (bool, optional): If True, the sequence will loop indefinitely.
+        """
         if self.debug_state != DebugState.IDLE: return
 
         self.current_sequence_name = sequence_name
@@ -356,19 +514,28 @@ class SequenceEngine(QObject):
         self.async_runner.submit(self._run_main_loop(start_node, main_sequence_data))
 
     def stop(self):
+        """Requests a graceful stop of the current execution."""
         if self.debug_state != DebugState.IDLE:
             logging.info("Stop requested for sequence execution.")
             self.is_looping = False
             self._stop_requested = True
-            self.resume() # In case we are paused
+            self.resume()
 
     async def _run_main_loop(self, start_node, sequence_data):
-        """The top-level loop that handles the 'loop' toggle."""
+        """
+        The top-level async loop that handles the 'loop' toggle.
+
+        This method repeatedly calls `_execute_graph` if looping is enabled.
+
+        Args:
+            start_node (dict): The node to start execution from.
+            sequence_data (dict): The data for the entire sequence.
+        """
         try:
             await self._execute_graph(self.current_sequence_name, start_node, sequence_data)
         finally:
             logging.info(f"Execution cycle for '{self.current_sequence_name}' finished.")
-            
+
             if self.is_looping and not self._stop_requested:
                 logging.info(f"Looping sequence '{self.current_sequence_name}'. Restarting...")
                 await asyncio.sleep(0.5)
@@ -382,116 +549,117 @@ class SequenceEngine(QObject):
                 self.execution_finished.emit(self.current_sequence_name, was_stopped)
 
     async def _execute_graph(self, sequence_name, start_node, sequence_data, is_sub_sequence=False):
-        """Executes a given sequence graph. Can be called recursively for sub-sequences."""
+        """
+        Executes a given sequence graph from a start node.
+
+        This method walks the graph node by node, executing each one and
+        following the conditional execution paths. It can be called recursively
+        for sub-sequences.
+
+        Args:
+            sequence_name (str): The name of the sequence being executed.
+            start_node (dict): The node to start execution from.
+            sequence_data (dict): The data for the entire sequence.
+            is_sub_sequence (bool, optional): True if this is a sub-sequence call.
+
+        Returns:
+            tuple: A tuple containing the final result and a success boolean.
+        """
         active_connection_data = None
         current_node = start_node
-        
+
         node_map = {node_data['uuid']: node_data for node_data in sequence_data.get('nodes', [])}
 
         while current_node and not self._stop_requested:
-            # --- THIS IS THE CORE DEBUGGING LOGIC ---
-            # Check for breakpoint on the current node
             if current_node.get('has_breakpoint') and self._pause_event.is_set():
                 if not (is_sub_sequence and not self._step_into):
                     self.debug_state = DebugState.PAUSED
-                    self._pause_event.clear() # Prepare to pause
+                    self._pause_event.clear()
                     self.execution_paused.emit(sequence_name, current_node['uuid'])
-            
-            # Wait here if paused
+
             await self._pause_event.wait()
-            
-            # If we were paused and are now stepping, clear the step event
+
             if self.debug_state == DebugState.PAUSED:
                 self.debug_state = DebugState.RUNNING
                 await self._step_event.wait()
                 self._step_event.clear()
-            # --- END OF DEBUGGING LOGIC ---
-            
+
             if active_connection_data:
-                self.connection_state_changed.emit(
-                    sequence_name,
-                    active_connection_data['start_node_uuid'],
-                    active_connection_data['end_node_uuid'],
-                    "idle"
-                )
+                self.connection_state_changed.emit(sequence_name, active_connection_data['start_node_uuid'], active_connection_data['end_node_uuid'], "idle")
                 await asyncio.sleep(0.1)
 
             self.node_state_changed.emit(sequence_name, current_node['uuid'], "running")
-            
+
             value, success = await self.execute_node(current_node, self._step_into)
 
             if not success:
-                # Handle the special case for Join nodes waiting for other branches.
                 if value == "WAITING_FOR_JOIN":
-                    # This branch is done, but it's not a failure.
                     logging.debug(f"Branch execution paused, waiting for join at node {current_node['uuid']}.")
-                    return None, True # Return success so the gather doesn't fail
+                    return None, True
                 else:
-                    # It's a real failure.
                     self.node_state_changed.emit(sequence_name, current_node['uuid'], "failed")
                     return None, False
-            
+
             self.node_state_changed.emit(sequence_name, current_node['uuid'], "success")
             await asyncio.sleep(0.2)
-            
+
             next_node_uuid, active_connection_data = self.find_next_node_and_connection(current_node, value, sequence_data)
 
             if active_connection_data:
-                self.connection_state_changed.emit(
-                    sequence_name,
-                    active_connection_data['start_node_uuid'],
-                    active_connection_data['end_node_uuid'],
-                    "active"
-                )
+                self.connection_state_changed.emit(sequence_name, active_connection_data['start_node_uuid'], active_connection_data['end_node_uuid'], "active")
                 await asyncio.sleep(0.2)
-            
+
             current_node = node_map.get(next_node_uuid) if next_node_uuid else None
-        
+
         if active_connection_data:
-            self.connection_state_changed.emit(
-                sequence_name,
-                active_connection_data['start_node_uuid'],
-                active_connection_data['end_node_uuid'],
-                "idle"
-            )
-            
+            self.connection_state_changed.emit(sequence_name, active_connection_data['start_node_uuid'], active_connection_data['end_node_uuid'], "idle")
+
         return value, True
 
-    async def execute_node(self, node_data, step_into = False):
-        node_type = node_data['config'].get('node_type')
+    async def execute_node(self, node_data, step_into=False):
+        """
+        Routes execution to the appropriate method based on node type.
 
-        if node_type == NodeType.METHOD_CALL.value:
-            return await self.execute_method_call_node(node_data)
-        elif node_type == NodeType.DELAY.value:
-            return await self.execute_delay_node(node_data)
-        elif node_type == NodeType.WRITE_VALUE.value:
-            return await self.execute_write_value_node(node_data)
-        elif node_type == NodeType.STATIC_VALUE.value:
-            return await self.execute_static_value_node(node_data)
-        elif node_type == NodeType.RUN_SEQUENCE.value:
-            return await self.execute_run_sequence_node(node_data, step_into)
-        elif node_type == NodeType.FOR_LOOP.value:
-            return await self.execute_for_loop_node(node_data)
-        elif node_type == NodeType.WHILE_LOOP.value:
-            return await self.execute_while_loop_node(node_data)
-        elif node_type == NodeType.COMPUTE.value:
-            return await self.execute_compute_node(node_data)
-        elif node_type == NodeType.SET_VARIABLE.value:
-            return await self.execute_set_variable_node(node_data)
-        elif node_type == NodeType.GET_VARIABLE.value:
-            return await self.execute_get_variable_node(node_data)
-        elif node_type == NodeType.FORK.value:
-            return await self.execute_fork_node(node_data)
-        elif node_type == NodeType.JOIN.value:
-            return await self.execute_join_node(node_data)
-        elif node_type == NodeType.PYTHON_SCRIPT.value:
-            return await self.execute_python_script_node(node_data)
+        Args:
+            node_data (dict): The data for the node to execute.
+            step_into (bool, optional): If true, debugger will step into sub-sequences.
+
+        Returns:
+            tuple: A tuple containing the node's result and a success boolean.
+        """
+        node_type = node_data['config'].get('node_type')
+        execution_map = {
+            NodeType.METHOD_CALL.value: self.execute_method_call_node,
+            NodeType.DELAY.value: self.execute_delay_node,
+            NodeType.WRITE_VALUE.value: self.execute_write_value_node,
+            NodeType.STATIC_VALUE.value: self.execute_static_value_node,
+            NodeType.RUN_SEQUENCE.value: lambda data: self.execute_run_sequence_node(data, step_into),
+            NodeType.FOR_LOOP.value: self.execute_for_loop_node,
+            NodeType.WHILE_LOOP.value: self.execute_while_loop_node,
+            NodeType.COMPUTE.value: self.execute_compute_node,
+            NodeType.SET_VARIABLE.value: self.execute_set_variable_node,
+            NodeType.GET_VARIABLE.value: self.execute_get_variable_node,
+            NodeType.FORK.value: self.execute_fork_node,
+            NodeType.JOIN.value: self.execute_join_node,
+            NodeType.PYTHON_SCRIPT.value: self.execute_python_script_node,
+        }
+        executor = execution_map.get(node_type)
+        if executor:
+            return await executor(node_data)
         else:
             logging.error(f"Unknown node type '{node_type}' for node '{node_data['config']['label']}'")
             return None, False
 
     async def execute_compute_node(self, node_data):
-        """Evaluates a mathematical or logical expression."""
+        """
+        Evaluates a mathematical or logical expression using data inputs.
+
+        Args:
+            node_data (dict): The data for the compute node.
+
+        Returns:
+            tuple: A tuple containing the expression's result and a success boolean.
+        """
         try:
             config = node_data['config']
             expression = config.get('expression')
@@ -502,42 +670,44 @@ class SequenceEngine(QObject):
             current_sequence_data = self.all_sequences[self.current_sequence_name]
             data_connections = current_sequence_data.get('data_connections', [])
 
-            # Find all connections ending at this compute node to gather inputs
             for conn in data_connections:
                 if conn['end_node_uuid'] == node_data['uuid']:
-                    input_label = conn.get('end_socket_label')  # 'A', 'B', 'C'
+                    input_label = conn.get('end_socket_label')
                     source_uuid = conn['start_node_uuid']
-                    
                     if input_label and source_uuid in self.execution_context:
                         local_vars[input_label] = self.execution_context[source_uuid]
                     else:
                         logging.warning(f"Could not find pre-computed value for input '{input_label}' from node '{source_uuid}'.")
                         return None, False
-            
+
             logging.info(f"Evaluating expression: '{expression}' with inputs: {local_vars}")
-            
-            # Safe eval environment
-            # We allow the local_vars (A, B, C) and built-in functions that are generally safe.
             result = eval(expression, {"__builtins__": None}, local_vars)
-            
             logging.info(f"Expression result: {result}")
             self.execution_context[node_data['uuid']] = result
             return result, True
-
         except Exception as e:
             logging.error(f"Failed to execute compute node '{node_data['config'].get('label', 'N/A')}': {e}")
             return None, False
 
     async def execute_while_loop_node(self, node_data):
-        """Executes the while loop based on a configurable condition."""
+        """
+        Executes a while loop node.
+
+        The loop continues as long as a condition, based on a data input,
+        is met. The condition is re-evaluated at the start of each iteration.
+
+        Args:
+            node_data (dict): The data for the while loop node.
+
+        Returns:
+            tuple: A tuple containing the final result ("Finished") and a success boolean.
+        """
         current_sequence_data = self.all_sequences[self.current_sequence_name]
         node_map = {n['uuid']: n for n in current_sequence_data['nodes']}
 
-        # Get loop configuration from the node
         negate_condition = node_data['config'].get('while_negate_condition', True)
         condition_target_str = node_data['config'].get('while_condition_value', '')
 
-        # Find the node connected to the "Loop Body" output
         loop_body_start_node_uuid, _ = self.find_next_node_and_connection(node_data, "Loop Body", current_sequence_data)
         if not loop_body_start_node_uuid:
             logging.warning("While Loop has no 'Loop Body' connected.")
@@ -545,7 +715,6 @@ class SequenceEngine(QObject):
 
         loop_start_node = node_map.get(loop_body_start_node_uuid)
 
-        # Find the source of the data input to re-evaluate it on each iteration
         source_node_uuid = next((conn['start_node_uuid'] for conn in current_sequence_data.get('data_connections', []) if conn['end_node_uuid'] == node_data['uuid']), None)
         if not source_node_uuid:
             logging.error("While Loop requires a data input connection for its condition.")
@@ -556,22 +725,19 @@ class SequenceEngine(QObject):
             logging.error(f"Could not find the source node ({source_node_uuid}) for the While Loop condition.")
             return None, False
 
-        # Main loop execution
         iteration_count = 0
-        max_iterations = 1000  # Safety break
+        max_iterations = 1000
         while iteration_count < max_iterations:
             if self._stop_requested: break
 
-            # Re-evaluate the condition by re-executing the source node
             self.node_state_changed.emit(self.current_sequence_name, source_node_data['uuid'], "running")
             live_value, success = await self.execute_node(source_node_data)
             self.node_state_changed.emit(self.current_sequence_name, source_node_data['uuid'], "success" if success else "failed")
-            
+
             if not success:
                 logging.error("Failed to evaluate While Loop condition.")
                 return None, False
 
-            # Convert the configured target value to the same type as the live value for proper comparison
             try:
                 if isinstance(live_value, bool):
                     condition_target = condition_target_str.lower() in ['true', '1', 't']
@@ -584,12 +750,11 @@ class SequenceEngine(QObject):
 
             is_match = (live_value == condition_target)
 
-            # Check if we should continue looping
-            if negate_condition: # Loop while "is not" - break when they match
+            if negate_condition:
                 if is_match: break
-            else: # Loop while "is" - break when they don't match
+            else:
                 if not is_match: break
-            
+
             logging.info(f"While Loop condition met. Executing loop body (Iteration {iteration_count + 1}).")
             if loop_start_node:
                 await self._execute_graph(self.current_sequence_name, loop_start_node, current_sequence_data, is_sub_sequence=True)
@@ -603,11 +768,21 @@ class SequenceEngine(QObject):
         return "Finished", True
 
     async def execute_for_loop_node(self, node_data):
+        """
+        Executes a for loop node.
+
+        The loop body is executed a fixed number of times as configured in the node.
+
+        Args:
+            node_data (dict): The data for the for loop node.
+
+        Returns:
+            tuple: A tuple containing the final result ("Finished") and a success boolean.
+        """
         iterations = int(node_data['config'].get('iterations', 1))
-        
-        # Find the node connected to the "Loop Body" output
+
         loop_body_start_node_uuid, _ = self.find_next_node_and_connection(node_data, "Loop Body", self.all_sequences[self.current_sequence_name])
-        
+
         if not loop_body_start_node_uuid:
             logging.warning("For Loop has no 'Loop Body' connected.")
         else:
@@ -615,29 +790,37 @@ class SequenceEngine(QObject):
             for i in range(iterations):
                 if self._stop_requested:
                     break
-                
+
                 logging.info(f"For Loop iteration {i + 1}/{iterations}")
-                
-                # Execute the graph starting from the loop body node
                 loop_start_node = node_map.get(loop_body_start_node_uuid)
                 if loop_start_node:
-                    # This is a simplified implementation. A more robust solution would trace the graph.
                     await self._execute_graph(self.current_sequence_name, loop_start_node, self.all_sequences[self.current_sequence_name], is_sub_sequence=True)
 
         return "Finished", True
 
     async def execute_run_sequence_node(self, node_data, step_into=False):
-        """Executes a sub-sequence."""
+        """
+        Executes another sequence as a sub-routine.
+
+        This allows for modular and reusable sequences.
+
+        Args:
+            node_data (dict): The data for the 'Run Sequence' node.
+            step_into (bool): Passed to the sub-sequence execution to control debugging.
+
+        Returns:
+            tuple: The result and success status from the sub-sequence execution.
+        """
         sub_sequence_name = node_data['config'].get('sequence_name')
         if not sub_sequence_name:
             logging.error("Run Sequence node has no sequence name configured.")
             return None, False
-        
+
         sub_sequence_data = self.all_sequences.get(sub_sequence_name)
         if not sub_sequence_data:
             logging.error(f"Could not find sub-sequence data for '{sub_sequence_name}'.")
             return None, False
-            
+
         start_node = self.find_start_node(sub_sequence_data)
         if not start_node:
             logging.error(f"No start node found for sub-sequence '{sub_sequence_name}'.")
@@ -646,10 +829,27 @@ class SequenceEngine(QObject):
         logging.info(f"--- Starting sub-sequence: {sub_sequence_name} ---")
         result, success = await self._execute_graph(sub_sequence_name, start_node, sub_sequence_data, is_sub_sequence=True)
         logging.info(f"--- Finished sub-sequence: {sub_sequence_name} (Success: {success}) ---")
-        
+
         return result, success
 
     async def resolve_argument_value(self, node_data, sequence_name):
+        """
+        Determines the value to be used as an argument for a node.
+
+        It can be a static value from the node's configuration or a dynamic
+        value from an incoming data connection.
+
+        Args:
+            node_data (dict): The data for the node requiring the argument.
+            sequence_name (str): The name of the current sequence.
+
+        Returns:
+            The resolved argument value.
+
+        Raises:
+            ValueError: If the node is configured to use a data connection
+                        but one is not found or the source has not executed.
+        """
         node_config = node_data['config']
         if not node_config.get("has_argument") or not node_config.get("use_connected_input", False):
             arg_text = node_config.get("argument_value", "")
@@ -657,7 +857,7 @@ class SequenceEngine(QObject):
                 return float(arg_text)
             except (ValueError, TypeError):
                 return arg_text
-        
+
         data_connections = self.all_sequences.get(sequence_name, {}).get('data_connections', [])
         source_node_uuid = None
         connection_uuid = None
@@ -666,7 +866,7 @@ class SequenceEngine(QObject):
                 source_node_uuid = conn['start_node_uuid']
                 connection_uuid = conn.get('uuid')
                 break
-        
+
         if source_node_uuid:
             if source_node_uuid in self.execution_context:
                 value = self.execution_context[source_node_uuid]
@@ -676,15 +876,28 @@ class SequenceEngine(QObject):
                 return value
             else:
                 raise ValueError(f"Source node '{source_node_uuid}' has not executed or produced a value.")
-        
+
         raise ValueError(f"Node '{node_config['label']}' is configured to use a connected input, but none is found.")
 
     async def execute_method_call_node(self, node_data):
+        """
+        Executes an OPC UA method call node.
+
+        It resolves the argument (if any) from a data connection or static
+        value, then calls the specified OPC UA method. The result is stored
+        in the execution context.
+
+        Args:
+            node_data (dict): The data for the method call node.
+
+        Returns:
+            tuple: A tuple containing the method's return value and a success boolean.
+        """
         try:
             config = node_data['config']
             parent_id = config['identifier']
             method_bname = config['method_bname']
-            
+
             parent_node = await self.opcua_logic.find_node(parent_id, "By Node ID")
             if not parent_node: raise Exception(f"Parent node not found: {parent_id}")
             method_node = await self.opcua_logic.get_method_node(parent_node, method_bname)
@@ -708,6 +921,17 @@ class SequenceEngine(QObject):
             return None, False
 
     async def execute_delay_node(self, node_data):
+        """
+        Executes a delay node.
+
+        Pauses the sequence execution for the configured duration.
+
+        Args:
+            node_data (dict): The data for the delay node.
+
+        Returns:
+            tuple: A tuple containing True and a success boolean.
+        """
         try:
             delay_s = float(node_data['config'].get('delay_seconds', 1.0))
             logging.info(f"Delaying for {delay_s} seconds...")
@@ -717,8 +941,20 @@ class SequenceEngine(QObject):
         except Exception as e:
             logging.error(f"Failed to execute delay node: {e}")
             return None, False
-            
+
     async def execute_write_value_node(self, node_data):
+        """
+        Executes a write value node.
+
+        It resolves the value to write from a data connection or static value,
+        then writes it to the specified OPC UA node.
+
+        Args:
+            node_data (dict): The data for the write value node.
+
+        Returns:
+            tuple: A tuple containing True and a success boolean.
+        """
         try:
             config = node_data['config']
             node_id = config.get('node_id')
@@ -738,15 +974,27 @@ class SequenceEngine(QObject):
         except Exception as e:
             logging.error(f"Failed to execute write value node: {e}")
             return None, False
-        
+
     async def execute_static_value_node(self, node_data):
+        """
+        Executes a static value node.
+
+        It outputs a pre-configured, static value which is then placed in the
+        execution context to be used by other nodes.
+
+        Args:
+            node_data (dict): The data for the static value node.
+
+        Returns:
+            tuple: A tuple containing the static value and a success boolean.
+        """
         try:
             value_str = node_data['config'].get('static_value', '')
             try:
                 value = float(value_str)
             except (ValueError, TypeError):
                 value = value_str
-            
+
             logging.info(f"Node '{node_data['config']['label']}' produced static value: {value}")
             self.execution_context[node_data['uuid']] = value
             return value, True
@@ -755,41 +1003,56 @@ class SequenceEngine(QObject):
             return None, False
 
     async def execute_set_variable_node(self, node_data):
+        """
+        Executes a 'Set Variable' node.
+
+        It resolves an input value and stores it in the shared `global_variables`
+        dictionary under a configured name.
+
+        Args:
+            node_data (dict): The data for the 'Set Variable' node.
+
+        Returns:
+            tuple: A tuple containing True and a success boolean.
+        """
         try:
             config = node_data['config']
             variable_name = config.get('variable_name')
             if not variable_name:
                 raise ValueError("Variable name is not configured.")
 
-            # Resolve the input value. This reuses the logic for finding
-            # the data connection and getting the value from the execution context.
             value_to_set = await self.resolve_argument_value(node_data, self.current_sequence_name)
-            
-            # --- FEATURE: GLOBAL VARIABLES ---
-            # The 'global_variables' dict is passed in from MainWindow
             self.global_variables[variable_name] = value_to_set
-            
             logging.info(f"Set global variable '{variable_name}' to: {value_to_set}")
-            return True, True # Continue execution, no output value
+            return True, True
         except Exception as e:
             logging.error(f"Failed to execute Set Variable node: {e}")
             return None, False
 
     async def execute_get_variable_node(self, node_data):
+        """
+        Executes a 'Get Variable' node.
+
+        It retrieves a value from the shared `global_variables` dictionary
+        and places it in the execution context for other nodes to use.
+
+        Args:
+            node_data (dict): The data for the 'Get Variable' node.
+
+        Returns:
+            tuple: A tuple containing the retrieved value and a success boolean.
+        """
         try:
             config = node_data['config']
             variable_name = config.get('variable_name')
             if not variable_name:
                 raise ValueError("Variable name is not configured.")
-            
-            # --- FEATURE: GLOBAL VARIABLES ---
+
             value = self.global_variables.get(variable_name)
             if value is None:
                 logging.warning(f"Global variable '{variable_name}' not found. Returning None.")
 
-            # Put the retrieved value into the context for downstream data nodes
             self.execution_context[node_data['uuid']] = value
-
             logging.info(f"Retrieved global variable '{variable_name}'. Value: {value}")
             return value, True
         except Exception as e:
@@ -797,11 +1060,21 @@ class SequenceEngine(QObject):
             return None, False
 
     async def execute_fork_node(self, node_data):
-        """Finds all outgoing execution paths and runs them concurrently."""
+        """
+        Executes a 'Fork' node.
+
+        It finds all outgoing execution paths and starts a new concurrent task
+        for each path using `asyncio.gather`.
+
+        Args:
+            node_data (dict): The data for the fork node.
+
+        Returns:
+            tuple: A tuple containing True and a success boolean.
+        """
         sequence_data = self.all_sequences[self.current_sequence_name]
         node_map = {n['uuid']: n for n in sequence_data['nodes']}
-        
-        # Find all branches starting from this fork node
+
         branches = []
         for conn_data in sequence_data.get('exec_connections', []):
             if conn_data['start_node_uuid'] == node_data['uuid']:
@@ -811,92 +1084,91 @@ class SequenceEngine(QObject):
 
         if not branches:
             logging.warning(f"Fork node '{node_data['uuid']}' has no outgoing connections.")
-            return True, True # Forking nothing is a success
+            return True, True
 
         logging.info(f"Forking execution into {len(branches)} branches.")
-
-        # Create a task for each branch
-        tasks = []
-        for start_node_of_branch in branches:
-            task = asyncio.create_task(
-                self._execute_graph(self.current_sequence_name, start_node_of_branch, sequence_data, is_sub_sequence=True)
-            )
-            tasks.append(task)
-
-        # Wait for all forked branches to complete
+        tasks = [asyncio.create_task(self._execute_graph(self.current_sequence_name, start_node, sequence_data, is_sub_sequence=True)) for start_node in branches]
         await asyncio.gather(*tasks)
-
         logging.info(f"All forked branches from '{node_data['uuid']}' have completed.")
-        
-        # A Fork node itself doesn't pass a value, it just splits execution.
-        # It signals completion to the _next_ node, which is typically a Join.
-        # However, the standard model is that the branches lead to a Join,
-        # and the Join node is what continues the main sequence flow.
-        # So, the Fork node's job is done after gathering the tasks.
         return True, True
 
     async def execute_python_script_node(self, node_data):
+        """
+        Executes a 'Python Script' node.
+
+        The script is executed in a restricted scope with access to an 'INPUT'
+        variable. The script can set an 'output' variable, which is then
+        placed in the execution context.
+
+        Args:
+            node_data (dict): The data for the python script node.
+
+        Returns:
+            tuple: A tuple containing the script's output and a success boolean.
+        """
         try:
             config = node_data['config']
             script = config.get('script', '')
             if not script:
-                return None, True # No script, just pass through
+                return None, True
 
-            # Resolve input value
             input_value = await self.resolve_argument_value(node_data, self.current_sequence_name)
-
-            # Prepare the execution scope
-            local_scope = {
-                'INPUT': input_value,
-                'output': None
-            }
-
-            # Execute the script
+            local_scope = {'INPUT': input_value, 'output': None}
             exec(script, {}, local_scope)
-
-            # Get the output
             output_value = local_scope.get('output')
             self.execution_context[node_data['uuid']] = output_value
-
             logging.info(f"Python script node executed. Output: {output_value}")
             return output_value, True
-
         except Exception as e:
             logging.error(f"Failed to execute Python script node: {e}")
             return None, False
 
     async def execute_join_node(self, node_data):
-        """Waits for all incoming execution paths to complete before continuing."""
+        """
+        Executes a 'Join' node.
+
+        This node acts as a synchronization point for forked paths. It counts
+        the number of incoming paths and only allows execution to continue
+        after all expected paths have arrived.
+
+        Args:
+            node_data (dict): The data for the join node.
+
+        Returns:
+            tuple: A result and success boolean. If not all paths have arrived,
+                   it returns ("WAITING_FOR_JOIN", False) to halt the current path.
+        """
         join_uuid = node_data['uuid']
-        
-        # We use the execution context to store the state of the join
+
         if join_uuid not in self.execution_context:
-            # First time hitting this join node in this run
-            num_incoming_connections = sum(1 for conn in self.all_sequences[self.current_sequence_name].get('exec_connections', []) if conn['end_node_uuid'] == join_uuid)
-            self.execution_context[join_uuid] = {
-                'arrivals': 1,
-                'expected': num_incoming_connections
-            }
-            logging.debug(f"Join node '{join_uuid}' first arrival. Expecting {num_incoming_connections} total.")
+            num_incoming = sum(1 for conn in self.all_sequences[self.current_sequence_name].get('exec_connections', []) if conn['end_node_uuid'] == join_uuid)
+            self.execution_context[join_uuid] = {'arrivals': 1, 'expected': num_incoming}
+            logging.debug(f"Join node '{join_uuid}' first arrival. Expecting {num_incoming} total.")
         else:
-            # Subsequent arrival
             self.execution_context[join_uuid]['arrivals'] += 1
             logging.debug(f"Join node '{join_uuid}' arrival #{self.execution_context[join_uuid]['arrivals']}.")
 
         context = self.execution_context[join_uuid]
         if context['arrivals'] < context['expected']:
-            # Not all branches have arrived yet, so we stop this path of execution.
-            # We return a special value to indicate this is not a failure, but a pause.
             logging.debug(f"Join node '{join_uuid}' waiting for more arrivals.")
-            return "WAITING_FOR_JOIN", False # Special case: stop this branch, but don't fail the sequence
+            return "WAITING_FOR_JOIN", False
         else:
-            # All branches have arrived.
             logging.info(f"Join node '{join_uuid}' has received all {context['expected']} arrivals. Continuing execution.")
-            # Reset for potential future loops
             del self.execution_context[join_uuid]
             return True, True
 
     def find_next_node_and_connection(self, current_node_data, result, sequence_data):
+        """
+        Finds the next node to execute based on outgoing connections and their conditions.
+
+        Args:
+            current_node_data (dict): The node that just finished executing.
+            result: The output result of the current node.
+            sequence_data (dict): The data for the entire sequence.
+
+        Returns:
+            tuple: A tuple containing the UUID of the next node and its connection data, or (None, None).
+        """
         exec_connections = sequence_data.get('exec_connections', [])
         for conn_data in exec_connections:
             if conn_data['start_node_uuid'] == current_node_data['uuid']:
@@ -906,201 +1178,92 @@ class SequenceEngine(QObject):
 
     def evaluate_condition(self, connection_data, result):
         """
-        Evaluates the condition on a connection, supporting both simple
-        comparisons and custom Python expressions.
+        Evaluates the condition on a connection.
+
+        Args:
+            connection_data (dict): The connection's data, including the condition.
+            result: The value to test the condition against.
+
+        Returns:
+            bool: True if the condition is met or if there is no condition.
         """
         condition = connection_data.get('condition')
         if not condition:
             return True
 
-        # --- NEW: Handle expression-based conditions ---
         if condition.get('type') == 'expression':
             expression = condition.get('expression')
-            if not expression:
-                return True  # An empty expression is treated as a pass-through
+            if not expression: return True
             try:
-                # Safely evaluate the expression with the input value
-                local_scope = {'INPUT': result}
-                eval_result = eval(expression, {"__builtins__": {}}, local_scope)
-                return bool(eval_result)
+                return bool(eval(expression, {"__builtins__": {}}, {'INPUT': result}))
             except Exception as e:
                 logging.error(f"Error evaluating condition expression '{expression}': {e}")
-                return False  # Fail-safe
+                return False
 
-        # --- Fallback to simple comparison for old format or explicit simple type ---
         op = condition.get('operator')
-        if op == 'No Condition':
-            return True
-            
-        # Special handling for For/While Loop outputs
-        if op in ["Loop Body", "Finished"]:
-            return result == op
-
-        # Handle conditions that don't have a 'value' key
-        if op == "is True":
-            return result is True
-        if op == "is False":
-            return result is False
-
+        if op == 'No Condition': return True
+        if op in ["Loop Body", "Finished"]: return result == op
+        if op == "is True": return result is True
+        if op == "is False": return result is False
         if 'value' not in condition:
             logging.error(f"Condition '{op}' requires a 'value' but none was found in {condition}.")
-            return False 
+            return False
 
         val_str = condition['value']
         try:
             if isinstance(result, bool):
-                if val_str.lower() in ['true', '1', 't']: val = True
-                elif val_str.lower() in ['false', '0', 'f']: val = False
-                else: val = val_str
+                val = val_str.lower() in ['true', '1', 't']
             elif isinstance(result, (int, float)):
-                 val = type(result)(val_str)
+                val = type(result)(val_str)
             else:
-                 val = val_str
-        except (ValueError, TypeError): 
+                val = val_str
+        except (ValueError, TypeError):
             val = val_str
 
-        if op == "==": return result == val
-        if op == "!=": return result != val
-        if op == ">": return result > val
-        if op == "<": return result < val
-        if op == ">=": return result >= val
-        if op == "<=": return result <= val
-        
+        ops_map = {"==": lambda a, b: a == b, "!=": lambda a, b: a != b, ">": lambda a, b: a > b,
+                   "<": lambda a, b: a < b, ">=": lambda a, b: a >= b, "<=": lambda a, b: a <= b}
+        if op in ops_map:
+            try:
+                return ops_map[op](result, val)
+            except TypeError: # Mismatched types
+                return False
         return False
 
     def find_start_node(self, sequence_data):
+        """
+        Finds the start node of a sequence (a node with no incoming execution connections).
+
+        Args:
+            sequence_data (dict): The data for the sequence.
+
+        Returns:
+            dict or None: The data for the start node, or None if not found.
+        """
         nodes = sequence_data.get('nodes', [])
         if not nodes: return None
-        
+
         end_node_uuids = {conn['end_node_uuid'] for conn in sequence_data.get('exec_connections', [])}
         for node_data in nodes:
             if node_data['uuid'] not in end_node_uuids:
                 return node_data
         return None
 
-class Port(QGraphicsObject):
-    def __init__(self, parent, is_output=False, label=None):
-        super().__init__(parent)
-        self.is_output, self.radius = is_output, 6
-        self.setFlag(QGraphicsObject.GraphicsItemFlag.ItemSendsScenePositionChanges)
-        self.connections = []
-        self.label = label
-        if self.label:
-            self.label_item = QGraphicsTextItem(self.label, self)
-            self.label_item.setDefaultTextColor(Qt.GlobalColor.white)
-            if self.is_output:
-                self.label_item.setPos(self.radius + 5, -self.label_item.boundingRect().height() / 2)
-            else:
-                self.label_item.setPos(-self.radius - 5 - self.label_item.boundingRect().width(), -self.label_item.boundingRect().height() / 2)
-
-    def boundingRect(self): return QRectF(-self.radius, -self.radius, 2 * self.radius, 2 * self.radius)
-    def paint(self, painter, option, widget=None):
-        painter.setBrush(QBrush(QColor("#5a98d1")))
-        painter.setPen(QPen(Qt.GlobalColor.white, 1))
-        painter.drawEllipse(-self.radius, -self.radius, 2 * self.radius, 2 * self.radius)
-    def itemChange(self, change, value):
-        if change == QGraphicsObject.GraphicsItemChange.ItemScenePositionHasChanged:
-            for conn in self.connections: conn.update_path()
-        return value
-
-class Connection(QGraphicsPathItem):
-    """A visual execution connection drawn as an automatic, smooth S-curve."""
-    def __init__(self, start_port, end_port, scene):
-        super().__init__()
-        self.start_port, self.end_port, self._scene = start_port, end_port, scene
-        self.setZValue(-1)
-        self.setFlag(QGraphicsPathItem.GraphicsItemFlag.ItemIsSelectable)
-        self.condition, self.state = None, "idle"
-        self.condition_label = QGraphicsTextItem(self)
-        self.condition_label.setDefaultTextColor(QColor("#a9d1ff"))
-        
-        self.start_port.connections.append(self)
-        if self.end_port: self.end_port.connections.append(self)
-        self.update_path()
-
-    def shape(self):
-        stroker = QPainterPathStroker()
-        stroker.setWidth(10)
-        return stroker.createStroke(self.path())
-
-    def set_state(self, new_state):
-        self.state = new_state
-        self.update()
-
-    def paint(self, painter, option, widget=None):
-        color = "#f0e68c" if self.state == "active" else "#ffffff"
-        width = 3 if self.state == "active" else 2
-        pen = QPen(QColor(color), width)
-
-        if self.isSelected():
-            pen.setColor(QColor("#ffc400"))
-        
-        painter.setPen(pen)
-        painter.drawPath(self.path())
-
-    def set_condition(self, condition):
-        self.condition = condition
-        label_text = ''
-        if self.condition:
-            if self.condition.get('type') == 'expression':
-                expr = self.condition.get('expression', '')
-                if len(expr) > 20:
-                    expr = expr[:17] + '...'
-                label_text = f"fx: {expr}" if expr else ""
-            else: 
-                op = self.condition.get('operator', '')
-                if op != "No Condition":
-                    label_text = op
-        
-        self.condition_label.setPlainText(label_text)
-        self.update_path()
-
-
-    def update_path(self):
-        path = QPainterPath()
-        start_pos = self.start_port.scenePos()
-        # FIX: Check if end_port exists before trying to access its scenePos
-        end_pos = self.end_port.scenePos() if self.end_port else self._scene.mouse_move_pos
-        
-        path.moveTo(start_pos)
-
-        # Automatic S-curve calculation
-        dx = end_pos.x() - start_pos.x()
-        dy = end_pos.y() - start_pos.y()
-        
-        # A fixed offset for the control points to create a gentle curve
-        offset = 50.0
-        ctrl1 = QPointF(start_pos.x() + offset, start_pos.y())
-        ctrl2 = QPointF(end_pos.x() - offset, end_pos.y())
-
-        path.cubicTo(ctrl1, ctrl2, end_pos)
-
-        self.setPath(path)
-        label_pos = path.pointAtPercent(0.5)
-        label_rect = self.condition_label.boundingRect()
-        vertical_offset = -15
-        self.condition_label.setPos(
-            label_pos.x() - label_rect.width() / 2,
-            label_pos.y() - label_rect.height() / 2 + vertical_offset
-        )
-
-    def destroy(self):
-        if self.start_port and self in self.start_port.connections: self.start_port.connections.remove(self)
-        if self.end_port and self in self.end_port.connections: self.end_port.connections.remove(self)
-        self._scene.removeItem(self)
-
-    def serialize(self):
-        if not self.start_port or not self.end_port:
-            return None
-        return {
-            'start_node_uuid': self.start_port.parentItem().uuid,
-            'end_node_uuid': self.end_port.parentItem().uuid,
-            'condition': self.condition,
-        }
-
 class DataSocket(QGraphicsObject):
-    # Added a label to identify sockets (e.g., 'A', 'B', 'C')
+    """
+    A visual socket on a SequenceNode for data flow connections.
+
+    These are represented as small squares and can have labels to distinguish
+    them (e.g., for multi-input nodes).
+    """
     def __init__(self, parent, is_output=False, label=None):
+        """
+        Initializes the DataSocket.
+
+        Args:
+            parent (QGraphicsItem): The parent node.
+            is_output (bool, optional): True if this is an output socket. Defaults to False.
+            label (str, optional): An identifying label for the socket. Defaults to None.
+        """
         super().__init__(parent)
         self.is_output = is_output
         self.label = label
@@ -1123,22 +1286,55 @@ class DataSocket(QGraphicsObject):
                 self.label_item.setPos(-self.label_item.boundingRect().width() / 2, -self.radius - self.label_item.boundingRect().height())
 
     def boundingRect(self):
+        """Returns the bounding rectangle of the socket."""
         return QRectF(-self.radius - 2, -self.radius - 2, 2 * self.radius + 4, 2 * self.radius + 4)
 
     def paint(self, painter, option, widget=None):
+        """
+        Paints the socket as a square.
+
+        Args:
+            painter (QPainter): The painter to use for drawing.
+            option (QStyleOptionGraphicsItem): Provides style options.
+            widget (QWidget, optional): The widget being painted on. Defaults to None.
+        """
         painter.setBrush(QBrush(QColor("#ffc400")))
         painter.setPen(QPen(Qt.GlobalColor.black, 1))
         painter.drawRect(-self.radius, -self.radius, 2 * self.radius, 2 * self.radius)
 
     def itemChange(self, change, value):
+        """
+        Updates connected data connections when the socket's position changes.
+
+        Args:
+            change (QGraphicsItem.GraphicsItemChange): The type of change.
+            value: The new value.
+
+        Returns:
+            The result of the parent's itemChange method.
+        """
         if change == QGraphicsObject.GraphicsItemChange.ItemScenePositionHasChanged:
             for conn in self.connections:
                 conn.update_path()
         return value
 
 class DataConnection(QGraphicsPathItem):
-    """A visual data connection with draggable horizontal and vertical segments."""
+    """
+    A visual data connection between two DataSockets.
+
+    The path is drawn with right-angled segments that can be dragged to
+    customize the layout.
+    """
     def __init__(self, start_socket, end_socket, scene, uuid_str=None):
+        """
+        Initializes the DataConnection.
+
+        Args:
+            start_socket (DataSocket): The socket where the connection starts.
+            end_socket (DataSocket): The socket where the connection ends.
+            scene (QGraphicsScene): The scene containing the connection.
+            uuid_str (str, optional): The UUID for the connection. If None, a new one is generated.
+        """
         super().__init__()
         self.uuid = uuid_str or str(uuid.uuid4())
         self.start_socket = start_socket
@@ -1156,21 +1352,41 @@ class DataConnection(QGraphicsPathItem):
         self.h_control_y1 = None
         self.h_control_y2 = None
         self.v_control_x = None
-        
+
         self.drag_handle = None # Can be 'v_handle', 'h1_handle', or 'h2_handle'
 
         self.update_path()
 
     def shape(self):
+        """
+        Returns a wider shape for easier mouse interaction.
+
+        Returns:
+            QPainterPath: The stroked shape of the connection.
+        """
         stroker = QPainterPathStroker()
         stroker.setWidth(10)
         return stroker.createStroke(self.path())
 
     def set_state(self, new_state):
+        """
+        Sets the visual state of the connection (e.g., 'active').
+
+        Args:
+            new_state (str): The new state string.
+        """
         self.state = new_state
         self.update()
 
     def paint(self, painter, option, widget=None):
+        """
+        Paints the connection path and its drag handles when selected.
+
+        Args:
+            painter (QPainter): The painter to use for drawing.
+            option (QStyleOptionGraphicsItem): Provides style options.
+            widget (QWidget, optional): The widget being painted on. Defaults to None.
+        """
         color = "#f0e68c" if self.state == "active" else "#ffc400"
         pen = QPen(QColor(color), 2, Qt.PenStyle.DashLine)
         if self.isSelected():
@@ -1183,17 +1399,22 @@ class DataConnection(QGraphicsPathItem):
         if self.isSelected():
             painter.setBrush(QBrush(QColor("#00aaff")))
             painter.setPen(QPen(Qt.GlobalColor.white))
-            
+
             handles = self.get_handle_positions()
             for handle_pos in handles.values():
                 if handle_pos:
                     painter.drawRoundedRect(QRectF(handle_pos.x() - 4, handle_pos.y() - 4, 8, 8), 2, 2)
-    
+
     def get_handle_positions(self):
-        """Calculates the positions for the draggable handles."""
+        """
+        Calculates the screen positions for the draggable segment handles.
+
+        Returns:
+            dict[str, QPointF]: A dictionary mapping handle names to their positions.
+        """
         start_pos = self.start_socket.scenePos()
         end_pos = self.end_socket.scenePos() if self.end_socket else self._scene.mouse_move_pos
-        
+
         h1_handle_pos = QPointF((self.v_control_x + start_pos.x()) / 2, self.h_control_y1)
         v_handle_pos = QPointF(self.v_control_x, (self.h_control_y1 + self.h_control_y2)/2)
         h2_handle_pos = QPointF((self.v_control_x + end_pos.x()) / 2, self.h_control_y2)
@@ -1201,7 +1422,7 @@ class DataConnection(QGraphicsPathItem):
         return {'h1': h1_handle_pos, 'v': v_handle_pos, 'h2': h2_handle_pos}
 
     def update_path(self):
-        """Draws the path with distinct horizontal and vertical segments."""
+        """Recalculates and sets the multi-segment path for the connection."""
         path = QPainterPath()
         start_pos = self.start_socket.scenePos()
         end_pos = self.end_socket.scenePos() if self.end_socket else self._scene.mouse_move_pos
@@ -1226,16 +1447,22 @@ class DataConnection(QGraphicsPathItem):
         path.lineTo(p3)
         path.lineTo(p4)
         path.lineTo(end_pos)
-        
+
         self.setPath(path)
 
     def mousePressEvent(self, event):
+        """
+        Handles mouse press events to select the connection or grab a drag handle.
+
+        Args:
+            event (QGraphicsSceneMouseEvent): The mouse press event.
+        """
         super().mousePressEvent(event)
         self.drag_handle = None
         if self.isSelected():
             pos = event.pos()
             handles = self.get_handle_positions()
-            
+
             # Check handles in order of appearance
             if (pos - handles['h1']).manhattanLength() < 10:
                 self.drag_handle = 'h1_handle'
@@ -1245,6 +1472,12 @@ class DataConnection(QGraphicsPathItem):
                  self.drag_handle = 'h2_handle'
 
     def mouseMoveEvent(self, event):
+        """
+        Handles mouse move events to move a dragged handle.
+
+        Args:
+            event (QGraphicsSceneMouseEvent): The mouse move event.
+        """
         if self.drag_handle == 'h1_handle':
             self.h_control_y1 = event.pos().y()
             self.update_path()
@@ -1258,10 +1491,17 @@ class DataConnection(QGraphicsPathItem):
             super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
+        """
+        Handles mouse release events to stop dragging a handle.
+
+        Args:
+            event (QGraphicsSceneMouseEvent): The mouse release event.
+        """
         self.drag_handle = None
         super().mouseReleaseEvent(event)
 
     def destroy(self):
+        """Removes the connection from its sockets and the scene."""
         if self.start_socket and self in self.start_socket.connections:
             self.start_socket.connections.remove(self)
         if self.end_socket and self in self.end_socket.connections:
@@ -1269,6 +1509,12 @@ class DataConnection(QGraphicsPathItem):
         self._scene.removeItem(self)
 
     def serialize(self):
+        """
+        Serializes the connection's state to a dictionary.
+
+        Returns:
+            dict or None: A dictionary with connection data, or None if incomplete.
+        """
         if not self.start_socket or not self.end_socket:
             return None
         return {
@@ -1283,24 +1529,39 @@ class DataConnection(QGraphicsPathItem):
 
 
 class SequenceNode(QGraphicsObject):
+    """
+    The visual representation of a single operation in the sequence.
+
+    This class handles the drawing, configuration, and interaction of a node
+    in the editor. It contains ports for execution flow and sockets for data flow.
+    The appearance of the node can change based on its type and execution state.
+    """
     def __init__(self, config, uuid_str=None):
+        """
+        Initializes the SequenceNode.
+
+        Args:
+            config (dict): The configuration dictionary that defines the node's
+                           type, label, and other properties.
+            uuid_str (str, optional): The UUID for the node. If None, a new one is generated.
+        """
         super().__init__()
         self.config = config
         self.uuid = uuid_str or str(uuid.uuid4())
         self.has_breakpoint = config.get('has_breakpoint', False)
 
         self.setFlags(QGraphicsObject.GraphicsItemFlag.ItemIsMovable | QGraphicsObject.GraphicsItemFlag.ItemIsSelectable | QGraphicsObject.GraphicsItemFlag.ItemSendsGeometryChanges)
-        self.width, self.height = 180, 80 
+        self.width, self.height = 180, 80
         self.state = "idle"
-        
+
         self.title = QGraphicsTextItem(self)
         self.title.setDefaultTextColor(Qt.GlobalColor.white)
-        
+
         font = QFont()
         font.setPointSize(10)
         font.setBold(True)
         self.title.setFont(font)
-        
+
         self.update_title()
 
         self.in_port = Port(self, is_output=False)
@@ -1356,20 +1617,40 @@ class SequenceNode(QGraphicsObject):
             self.data_out_socket.setPos(self.width / 2, self.height)
         elif node_type in [NodeType.FOR_LOOP.value, NodeType.WHILE_LOOP.value]:
              self.out_port.hide()
-    
+
     def toggle_breakpoint(self):
-        """Toggles the breakpoint state for this node."""
+        """Toggles the breakpoint state for this node and triggers a repaint."""
         self.has_breakpoint = not self.has_breakpoint
         self.config['has_breakpoint'] = self.has_breakpoint
         self.update() # Trigger a repaint
 
     def set_state(self, new_state):
+        """
+        Sets the visual state of the node and triggers a repaint.
+
+        Used for showing execution status (e.g., 'running', 'success').
+
+        Args:
+            new_state (str): The new state string.
+        """
         self.state = new_state
         self.update()
 
-    def boundingRect(self): return QRectF(0, 0, self.width, self.height)
+    def boundingRect(self):
+        """Returns the bounding rectangle of the node."""
+        return QRectF(0, 0, self.width, self.height)
 
     def paint(self, painter: QPainter, option: QStyleOptionGraphicsItem, widget: QWidget | None = ...):
+        """
+        Paints the node's shape, color, and breakpoint indicator.
+
+        The color is determined by the node's type, selection state, and execution state.
+
+        Args:
+            painter (QPainter): The painter to use for drawing.
+            option (QStyleOptionGraphicsItem): Provides style options.
+            widget (QWidget, optional): The widget being painted on. Defaults to None.
+        """
         path = QPainterPath()
         path.addRoundedRect(self.boundingRect(), 10, 10)
 
@@ -1396,13 +1677,23 @@ class SequenceNode(QGraphicsObject):
         painter.setBrush(QBrush(QColor(color)))
         painter.setPen(QPen(QColor("#888"), 1))
         painter.drawPath(path)
-        
+
         if self.has_breakpoint:
             painter.setBrush(QBrush(QColor("#e53935"))) # Red color for breakpoint
             painter.setPen(Qt.PenStyle.NoPen)
             painter.drawEllipse(self.width - 20, 5, 15, 15)
 
     def itemChange(self, change, value):
+        """
+        Propagates position changes to all connections.
+
+        Args:
+            change (QGraphicsItem.GraphicsItemChange): The type of change.
+            value: The new value.
+
+        Returns:
+            The result of the parent's itemChange method.
+        """
         if change == QGraphicsObject.GraphicsItemChange.ItemPositionHasChanged:
             self.in_port.itemChange(QGraphicsObject.GraphicsItemChange.ItemScenePositionHasChanged, None)
             self.out_port.itemChange(QGraphicsObject.GraphicsItemChange.ItemScenePositionHasChanged, None)
@@ -1424,6 +1715,7 @@ class SequenceNode(QGraphicsObject):
         return super().itemChange(change, value)
 
     def destroy(self):
+        """Removes the node and all its connections from the scene."""
         for conn in self.in_port.connections[:]: conn.destroy()
         for conn in self.out_port.connections[:]: conn.destroy()
         if self.data_in_socket:
@@ -1452,6 +1744,7 @@ class SequenceNode(QGraphicsObject):
         self.title.setPos(x, y)
 
     def update_title(self):
+        """Updates the node's title text from its configuration."""
         title_text = self.config.get('label', 'Unknown')
         if self.config.get('has_argument'):
             title_text += " *"
@@ -1459,29 +1752,50 @@ class SequenceNode(QGraphicsObject):
         self.center_title()
 
     def serialize(self):
+        """
+        Serializes the node's state to a dictionary.
+
+        Returns:
+            dict: A dictionary containing the node's data.
+        """
         return {
             'uuid': self.uuid,
             'config': self.config,
             'pos': {'x': self.pos().x(), 'y': self.pos().y()},
             'has_breakpoint': self.has_breakpoint
         }
-        
+
     def mousePressEvent(self, event):
-        """When a node is pressed, temporarily disable the view's rubber band drag mode."""
+        """
+        Handles mouse press events on the node.
+
+        Temporarily disables the view's rubber band drag mode to ensure node
+        dragging takes precedence.
+
+        Args:
+            event (QGraphicsSceneMouseEvent): The mouse press event.
+        """
         if self.scene() and self.scene().views():
             self.scene().views()[0].setDragMode(QGraphicsView.DragMode.NoDrag)
         super().mousePressEvent(event)
 
     def mouseReleaseEvent(self, event):
-        """When the node is released, restore the view's rubber band drag mode."""
+        """
+        Handles mouse release events on the node.
+
+        Restores the view's rubber band drag mode.
+
+        Args:
+            event (QGraphicsSceneMouseEvent): The mouse release event.
+        """
         if self.scene() and self.scene().views():
             self.scene().views()[0].setDragMode(QGraphicsView.DragMode.RubberBandDrag)
         super().mouseReleaseEvent(event)
-        
+
     def highlight(self):
-        """Animates the node to draw attention to it."""
+        """Animates the node with a blinking effect to draw attention to it."""
         self.setZValue(10) # Bring to front
-        
+
         anim = QPropertyAnimation(self, b"opacity")
         anim.setDuration(200)
         anim.setLoopCount(4) # Blink twice
@@ -1494,7 +1808,20 @@ class SequenceNode(QGraphicsObject):
 
 
 class GroupNode(QGraphicsObject):
+    """
+    A visual container for grouping other nodes together.
+
+    It can be moved (which moves all contained nodes) and resized. Its title
+    can be edited by double-clicking.
+    """
     def __init__(self, title="Group", uuid_str=None):
+        """
+        Initializes the GroupNode.
+
+        Args:
+            title (str, optional): The initial title of the group. Defaults to "Group".
+            uuid_str (str, optional): The UUID for the node. If None, a new one is generated.
+        """
         super().__init__()
         self.uuid = uuid_str or str(uuid.uuid4())
         self.setFlag(QGraphicsObject.GraphicsItemFlag.ItemIsMovable)
@@ -1509,9 +1836,20 @@ class GroupNode(QGraphicsObject):
         self.contained_nodes = []
 
     def boundingRect(self):
+        """Returns the bounding rectangle of the group node."""
         return QRectF(0, 0, self.width, self.height)
 
     def paint(self, painter, option, widget=None):
+        """
+        Paints the group node as a semi-transparent rounded rectangle.
+
+        Also draws a resize handle in the bottom-right corner.
+
+        Args:
+            painter (QPainter): The painter to use for drawing.
+            option (QStyleOptionGraphicsItem): Provides style options.
+            widget (QWidget, optional): The widget being painted on. Defaults to None.
+        """
         path = QPainterPath()
         path.addRoundedRect(self.boundingRect(), 10, 10)
 
@@ -1527,12 +1865,24 @@ class GroupNode(QGraphicsObject):
         painter.drawRect(handle_rect)
 
     def mouseDoubleClickEvent(self, event):
+        """
+        Handles double-click events to enable title editing.
+
+        Args:
+            event (QGraphicsSceneMouseEvent): The mouse event.
+        """
         if self.title_item.boundingRect().contains(event.pos()):
             self.title_item.setTextInteractionFlags(Qt.TextInteractionFlag.TextEditorInteraction)
             self.title_item.setFocus()
         super().mouseDoubleClickEvent(event)
 
     def mousePressEvent(self, event):
+        """
+        Handles mouse press events to initiate resizing.
+
+        Args:
+            event (QGraphicsSceneMouseEvent): The mouse event.
+        """
         self.is_resizing = False
         handle_size = 10
         handle_rect = QRectF(self.width - handle_size, self.height - handle_size, handle_size, handle_size)
@@ -1543,6 +1893,12 @@ class GroupNode(QGraphicsObject):
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
+        """
+        Handles mouse move events to perform resizing.
+
+        Args:
+            event (QGraphicsSceneMouseEvent): The mouse event.
+        """
         if self.is_resizing:
             delta = event.pos() - self.resize_start_pos
             self.prepareGeometryChange()
@@ -1552,26 +1908,66 @@ class GroupNode(QGraphicsObject):
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event):
+        """
+        Handles mouse release events to finalize resizing.
+
+        Args:
+            event (QGraphicsSceneMouseEvent): The mouse event.
+        """
         self.is_resizing = False
         super().mouseReleaseEvent(event)
 
     def itemChange(self, change, value):
+        """
+        Handles changes to the item's state.
+
+        Currently unused for position changes as node movement is handled by parenting.
+
+        Args:
+            change (QGraphicsItem.GraphicsItemChange): The type of change.
+            value: The new value.
+
+        Returns:
+            The result of the parent's itemChange method.
+        """
         if change == QGraphicsObject.GraphicsItemChange.ItemPositionHasChanged:
             # This logic will be handled by parenting the nodes to the group
             pass
         return super().itemChange(change, value)
 
     def add_node(self, node):
+        """
+        Adds a node to this group.
+
+        The node is added to the internal list and is graphically parented to the group.
+
+        Args:
+            node (SequenceNode): The node to add.
+        """
         if node not in self.contained_nodes:
             self.contained_nodes.append(node)
             node.setParentItem(self)
 
     def remove_node(self, node):
+        """
+        Removes a node from this group.
+
+        The node is removed from the internal list and its parent is reset.
+
+        Args:
+            node (SequenceNode): The node to remove.
+        """
         if node in self.contained_nodes:
             self.contained_nodes.remove(node)
             node.setParentItem(None)
 
     def serialize(self):
+        """
+        Serializes the group node's state to a dictionary.
+
+        Returns:
+            dict: A dictionary containing the group's data.
+        """
         return {
             'uuid': self.uuid,
             'title': self.title_item.toPlainText(),
@@ -1582,7 +1978,19 @@ class GroupNode(QGraphicsObject):
 
 
 class EditableTitleTextItem(QGraphicsTextItem):
+    """
+    A QGraphicsTextItem that becomes editable on double-click.
+
+    Used for the title of a GroupNode.
+    """
     def __init__(self, text, parent):
+        """
+        Initializes the EditableTitleTextItem.
+
+        Args:
+            text (str): The initial text to display.
+            parent (QGraphicsItem): The parent graphics item.
+        """
         super().__init__(text, parent)
         self.parent = parent
         self.setPlainText(text)
@@ -1590,6 +1998,12 @@ class EditableTitleTextItem(QGraphicsTextItem):
         self.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
 
     def focusOutEvent(self, event):
+        """
+        Disables text editing when the item loses focus.
+
+        Args:
+            event (QFocusEvent): The focus event.
+        """
         self.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
         super().focusOutEvent(event)
 
@@ -1627,16 +2041,16 @@ class DeleteItemsCommand(QUndoCommand):
                 connections_to_add = []
                 connections_to_add.extend(item.in_port.connections)
                 connections_to_add.extend(item.out_port.connections)
-                
+
                 if item.data_in_socket:
                     connections_to_add.extend(item.data_in_socket.connections)
                 if item.data_out_socket:
                     connections_to_add.extend(item.data_out_socket.connections)
-                
+
                 if hasattr(item, 'data_in_sockets'):
                     for socket in item.data_in_sockets.values():
                         connections_to_add.extend(socket.connections)
-                
+
                 if hasattr(item, 'out_port_loop_body'):
                      connections_to_add.extend(item.out_port_loop_body.connections)
                 if hasattr(item, 'out_port_finished'):
@@ -1675,7 +2089,7 @@ class DeleteItemsCommand(QUndoCommand):
                 data['h_control_y1'] = item.h_control_y1
                 data['h_control_y2'] = item.h_control_y2
                 data['v_control_x'] = item.v_control_x
-            
+
             # Only add items that could be serialized
             if 'type' in data:
                 self.items_data.append(data)
@@ -1695,7 +2109,7 @@ class DeleteItemsCommand(QUndoCommand):
         for item in self.scene.items():
             if isinstance(item, (SequenceNode, CommentNode)):
                 nodes_map[item.uuid] = item
-        
+
         # Re-add nodes and comments first
         for data in self.items_data:
             if data['type'] == 'node':
@@ -1722,7 +2136,7 @@ class DeleteItemsCommand(QUndoCommand):
                         conn.set_condition(data['condition'])
                     self.scene.addItem(conn)
                     data['item'] = conn
-            elif data['type'] == 'data_connection':
+            elif isinstance(item, DataConnection):
                 start_node = nodes_map.get(data['start_uuid'])
                 end_node = nodes_map.get(data['end_uuid'])
                 if start_node and end_node:
@@ -1733,7 +2147,7 @@ class DeleteItemsCommand(QUndoCommand):
                         end_socket = end_node.data_in_sockets.get(socket_label)
                     elif hasattr(end_node, 'data_in_socket'):
                         end_socket = end_node.data_in_socket
-                    
+
                     if start_node.data_out_socket and end_socket:
                         conn = DataConnection(start_node.data_out_socket, end_socket, self.scene, data.get('uuid'))
                         conn.h_control_y1 = data.get('h_control_y1')
@@ -1774,7 +2188,7 @@ class SequenceScene(QGraphicsScene):
         self.grid_size = 20
         self.grid_color = QColor(200, 200, 200)
         self.background_color = QColor(40, 42, 45)
-        
+
         # Set a large scene rectangle for a scrollable/pannable canvas
         self.setSceneRect(-5000, -5000, 10000, 10000)
         self.setBackgroundBrush(self.background_color)
@@ -1822,7 +2236,7 @@ class SequenceScene(QGraphicsScene):
     def drawBackground(self, painter: QPainter, rect: QRectF):
         """Draws a dot grid background, inspired by Node-RED."""
         super().drawBackground(painter, rect)
-        
+
         left = int(rect.left())
         right = int(rect.right())
         top = int(rect.top())
@@ -1856,9 +2270,9 @@ class SequenceScene(QGraphicsScene):
 
     def contextMenuEvent(self, event):
         item_at_pos = self.itemAt(event.scenePos(), self.views()[0].transform())
-        
+
         menu = QMenu()
-        
+
         # Context menu for a node
         if isinstance(item_at_pos, GroupNode):
             ungroup_action = menu.addAction("Ungroup")
@@ -1942,7 +2356,7 @@ class SequenceScene(QGraphicsScene):
                 self.add_new_node_requested.emit(NodeType.JOIN, pos)
             elif action == add_python_script_action:
                 self.add_new_node_requested.emit(NodeType.PYTHON_SCRIPT, pos)
-            
+
     def set_node_color(self, node):
         """Opens a color dialog and sets the custom color for the given node."""
         current_color = QColor(node.config.get('custom_color', '#3c3f41'))
@@ -1989,7 +2403,7 @@ class SequenceScene(QGraphicsScene):
         elif isinstance(item, DataSocket) and item.is_output:
             self.temp_connection = DataConnection(item, None, self)
             self.addItem(self.temp_connection)
-        
+
         super().mousePressEvent(event)
 
         if event.button() == Qt.MouseButton.LeftButton:
@@ -2018,7 +2432,7 @@ class SequenceScene(QGraphicsScene):
                     snapped_x = round(node.pos().x() / self.grid_size) * self.grid_size
                     snapped_y = round(node.pos().y() / self.grid_size) * self.grid_size
                     new_positions.append(QPointF(snapped_x, snapped_y))
-            
+
             if moved_nodes:
                 command = MoveNodesCommand(moved_nodes, old_positions, new_positions)
                 self.undo_stack.push(command)
@@ -2049,17 +2463,17 @@ class SequenceScene(QGraphicsScene):
                     self.temp_connection.end_port = target_port
                     target_port.connections.append(self.temp_connection)
                     self.temp_connection.update_path()
-                    
+
                     if self.temp_connection.start_port.parentItem().config.get('node_.type') in [NodeType.FOR_LOOP.value, NodeType.WHILE_LOOP.value]:
                         condition = {'operator': self.temp_connection.start_port.label}
                         self.temp_connection.set_condition(condition)
                     else:
                         dialog = ConditionDialog(self.views()[0], current_condition=self.temp_connection.condition)
-                        if dialog.exec(): 
+                        if dialog.exec():
                             self.temp_connection.set_condition(dialog.get_condition())
                         else: # FIX: No condition on cancel
                             self.temp_connection.set_condition(None)
-                    
+
                     self.scene_changed.emit()
                 else: self.temp_connection.destroy()
             elif isinstance(self.temp_connection, DataConnection):
@@ -2080,10 +2494,10 @@ class SequenceScene(QGraphicsScene):
 
     def mouseDoubleClickEvent(self, event):
         item = self.itemAt(event.scenePos(), self.views()[0].transform())
-        
+
         if isinstance(item, Connection):
             dialog = ConditionDialog(self.views()[0], current_condition=item.condition)
-            if dialog.exec(): 
+            if dialog.exec():
                 item.set_condition(dialog.get_condition())
                 self.scene_changed.emit()
         elif isinstance(item, SequenceNode):
@@ -2099,7 +2513,7 @@ class SequenceScene(QGraphicsScene):
                 return
             elif node_type == NodeType.DELAY.value:
                 delay, ok = QInputDialog.getDouble(self.views()[0], "Configure Delay", "Delay (seconds):", item.config.get('delay_seconds', 1.0), 0.1, 3600, 2)
-                if ok: 
+                if ok:
                     item.config['delay_seconds'] = delay
                     self.scene_changed.emit()
                 item.update_title()
@@ -2128,7 +2542,7 @@ class SequenceScene(QGraphicsScene):
                 return
             elif node_type == NodeType.WHILE_LOOP.value:
                 dialog = WhileLoopDialog(self.views()[0], current_config=item.config)
-            
+
             if dialog and dialog.exec():
                 new_config = dialog.get_config()
                 if new_config:
@@ -2212,8 +2626,8 @@ class Minimap(QGraphicsView):
         else:
             super().mouseReleaseEvent(event)
 
-class SequenceEditor(QGraphicsView):       
-    scene_changed = pyqtSignal()    
+class SequenceEditor(QGraphicsView):
+    scene_changed = pyqtSignal()
 
     """The main view widget for the sequencer scene."""
     def __init__(self, parent=None):
@@ -2226,7 +2640,7 @@ class SequenceEditor(QGraphicsView):
         self.setDragMode(QGraphicsView.DragMode.RubberBandDrag)
         self.setViewportUpdateMode(QGraphicsView.ViewportUpdateMode.FullViewportUpdate)
         self.setMouseTracking(True)
-        
+
         # --- Panning and Zooming ---
         self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
         self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
@@ -2235,7 +2649,7 @@ class SequenceEditor(QGraphicsView):
 
         self.available_sequences = []
         self.current_sequence = ""
-        
+
         self.find_widget = FindWidget(self)
         self.find_widget.hide()
         self.find_widget.find_next.connect(self.find_node)
@@ -2256,12 +2670,12 @@ class SequenceEditor(QGraphicsView):
         self.minimap_toggle_button.setIcon(self.icon_hide_minimap)
         self.minimap_toggle_button.setFixedSize(30, 30)
         self.minimap_toggle_button.clicked.connect(self.toggle_minimap_visibility)
-        
+
     def get_selected_nodes_data(self):
         """Returns a list of serialized data for all selected SequenceNode items."""
         selected_items = self.scene.selectedItems()
         return [item.serialize() for item in selected_items if isinstance(item, (SequenceNode, CommentNode))]
-    
+
     def paste_nodes(self, nodes_data, paste_position):
         """Pastes nodes from serialized data onto the scene, snapping to the grid."""
         if not nodes_data:
@@ -2274,7 +2688,7 @@ class SequenceEditor(QGraphicsView):
             original_pos = node_data['pos']
             offset_x = original_pos['x'] - min_x
             offset_y = original_pos['y'] - min_y
-            
+
             # Calculate the new position and snap it to the grid
             raw_x = paste_position.x() + offset_x
             raw_y = paste_position.y() + offset_y
@@ -2282,14 +2696,14 @@ class SequenceEditor(QGraphicsView):
             snapped_x = round(raw_x / grid_size) * grid_size
             snapped_y = round(raw_y / grid_size) * grid_size
             new_pos = QPointF(snapped_x, snapped_y)
-            
+
             new_config = node_data['config']
-            
+
             command = AddNodeCommand(self.scene, new_config, new_pos)
             self.scene.undo_stack.push(command)
 
         logging.info(f"Pasted {len(nodes_data)} nodes.")
-        
+
     def mousePressEvent(self, event):
         """Handles middle-mouse button panning."""
         if event.button() == Qt.MouseButton.MiddleButton:
@@ -2317,7 +2731,7 @@ class SequenceEditor(QGraphicsView):
              return
 
         current_engine = main_window.running_sequences.get(self.current_sequence)
-        
+
         if current_engine and current_engine.debug_state == DebugState.PAUSED:
             item = self.itemAt(event.pos())
             if isinstance(item, DataConnection):
@@ -2339,7 +2753,7 @@ class SequenceEditor(QGraphicsView):
             event.accept()
         else:
             super().mouseReleaseEvent(event)
-    
+
     def wheelEvent(self, event):
         """Zooms the view with Ctrl + Mouse Wheel."""
         if event.modifiers() == Qt.KeyboardModifier.ControlModifier:
@@ -2364,8 +2778,8 @@ class SequenceEditor(QGraphicsView):
 
     def reset_zoom(self):
         """Resets the view's transformation to the default state."""
-        self.setTransform(QTransform())    
-    
+        self.setTransform(QTransform())
+
     def delete_selected_items(self):
         """Deletes the currently selected nodes and connections."""
         selected_items = self.scene.selectedItems()
@@ -2390,7 +2804,7 @@ class SequenceEditor(QGraphicsView):
         super().resizeEvent(event)
         if self.find_widget:
             self.find_widget.move(self.width() - self.find_widget.width() - 10, 10)
-        
+
         # Position minimap and its toggle button
         if self.minimap and self.minimap_toggle_button:
             minimap_size = 200
@@ -2431,7 +2845,7 @@ class SequenceEditor(QGraphicsView):
         """Finds and selects the next/previous node matching the text."""
         search_term = text.lower()
         nodes = [item for item in self.scene.items() if isinstance(item, (SequenceNode, CommentNode))]
-        
+
         if not find_next:
             nodes.reverse()
 
@@ -2456,7 +2870,7 @@ class SequenceEditor(QGraphicsView):
                     self.centerOn(node)
                     self.last_found_node = node
                     return
-        
+
         self.last_found_node = None
 
     def select_all_nodes(self):
@@ -2464,7 +2878,7 @@ class SequenceEditor(QGraphicsView):
         for item in self.scene.items():
             if isinstance(item, (SequenceNode, Connection, DataConnection, CommentNode)):
                 item.setSelected(True)
-                
+
     def set_available_sequences(self, names, current_name):
         self.available_sequences = names
         self.current_sequence = current_name
@@ -2484,12 +2898,12 @@ class SequenceEditor(QGraphicsView):
             if isinstance(item, (SequenceNode, Connection, DataConnection)):
                 if hasattr(item, 'set_state'):
                     item.set_state("idle")
-    
+
     def add_node(self, config):
         """Adds a pre-configured node (typically a Method Call from the server tree)."""
         config['node_type'] = NodeType.METHOD_CALL.value
         position = self.mapToScene(self.viewport().rect().center())
-        
+
         # Snap new node position to grid
         grid_size = self.scene.grid_size
         snapped_x = round(position.x() / grid_size) * grid_size
@@ -2501,7 +2915,7 @@ class SequenceEditor(QGraphicsView):
     def on_add_new_node(self, node_type: NodeType, position: QPointF):
         """Handles the request to add a new, non-method-call node."""
         config = {'node_type': node_type.value}
-        
+
         if node_type == NodeType.DELAY:
             config['label'] = "Delay"
             config['delay_seconds'] = 1.0
@@ -2635,7 +3049,7 @@ class SequenceEditor(QGraphicsView):
                         end_socket = end_node.data_in_sockets.get(socket_label)
                     elif hasattr(end_node, 'data_in_socket'): # Fallback for older/single-input nodes
                         end_socket = end_node.data_in_socket
-                    
+
                     if start_node.data_out_socket and end_socket:
                         connection = DataConnection(start_node.data_out_socket, end_socket, self.scene, conn_data.get('uuid'))
                         if conn_data.get('control_point'):

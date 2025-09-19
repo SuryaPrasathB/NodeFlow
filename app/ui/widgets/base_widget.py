@@ -4,8 +4,19 @@ from PyQt6.QtGui import QCursor, QAction, QMouseEvent
 
 class BaseWidget(QFrame):
     """
-    Base class for dashboard widgets. Now includes robust drag-and-drop for
-    minimized widgets that are also clickable.
+    Base class for all dashboard widgets, providing common functionality.
+
+    This class implements core features such as a title, status label,
+    drag-and-drop movement, resizing, selection with a visible border,
+    a right-click context menu, and states for minimization and deletion.
+    It is designed to be subclassed by specific widget types, which should
+    implement the `setup_widget` method.
+
+    Attributes:
+        request_delete (pyqtSignal): Emitted when the user requests to delete the widget.
+        request_copy (pyqtSignal): Emitted when the user requests to copy the widget's config.
+        request_duplicate (pyqtSignal): Emitted when the user requests to duplicate the widget.
+        state_changed (pyqtSignal): Emitted when the widget's state (e.g., minimized) changes.
     """
     request_delete = pyqtSignal(QWidget)
     request_copy = pyqtSignal(dict)
@@ -13,6 +24,15 @@ class BaseWidget(QFrame):
     state_changed = pyqtSignal(bool)
     
     def __init__(self, config, opcua_logic, parent=None, async_runner=None):
+        """
+        Initializes the BaseWidget.
+
+        Args:
+            config (dict): The configuration dictionary for the widget.
+            opcua_logic (OpcuaClientLogic): The OPC UA logic instance.
+            parent (QWidget, optional): The parent widget. Defaults to None.
+            async_runner (AsyncRunner, optional): The runner for async tasks. Defaults to None.
+        """
         super().__init__(parent)
         self.config = config
         self.opcua_logic = opcua_logic
@@ -108,11 +128,23 @@ class BaseWidget(QFrame):
         propagate_mouse_press(self, self)
     
     def isSelected(self):
-        """Returns whether the widget is selected."""
+        """
+        Checks if the widget is currently selected.
+
+        Returns:
+            bool: True if the widget is selected, False otherwise.
+        """
         return self._selected
 
     def setSelected(self, selected: bool):
-        """Sets the selection state and updates the style property."""
+        """
+        Sets the selection state of the widget.
+
+        This updates a style property, causing the widget's border to appear or disappear.
+
+        Args:
+            selected (bool): The new selection state.
+        """
         self._selected = selected
         self.setProperty("selected", selected)
         # Re-polish the widget to apply the new style state
@@ -120,14 +152,21 @@ class BaseWidget(QFrame):
         self.style().polish(self)
 
     def clear_all_selections_in_parent(self):
-        """Utility to clear selection from all sibling widgets in the same parent container."""
+        """Finds all other BaseWidgets in the parent and clears their selection."""
         parent = self.parent()
         if parent:
             for widget in parent.findChildren(BaseWidget):
                 widget.setSelected(False)
         
     def serialize(self):
-        """Serializes the widget's state for copy/paste or saving."""
+        """
+        Serializes the widget's configuration and geometry into a dictionary.
+
+        This is used for saving the dashboard layout and for copy/paste operations.
+
+        Returns:
+            dict: A dictionary containing the widget's state.
+        """
         pos = self.pos()
         size = self.size()
 
@@ -155,6 +194,12 @@ class BaseWidget(QFrame):
         }
 
     async def initialize(self):
+        """
+        Asynchronously initializes the widget's connection to its OPC UA node.
+
+        Finds the node based on the widget's configuration and then calls
+        `setup_widget`. If the node is not found, it enters an error state.
+        """
         # SequenceWidget does not have an identifier, handle this case
         if 'identifier' not in self.config:
             await self.setup_widget()
@@ -172,20 +217,42 @@ class BaseWidget(QFrame):
             self.set_error_state(f"Init Error: {e}")
 
     async def setup_widget(self):
+        """
+        Abstract method for subclass-specific setup.
+
+        This method must be implemented by subclasses to create their unique UI
+        elements and set up any OPC UA subscriptions.
+        """
         raise NotImplementedError("Subclasses must implement this method.")
 
     def stop_subscription(self):
         """
         Virtual method to be overridden by subclasses that use subscriptions.
-        This ensures that when a widget is deleted, its subscription is properly terminated.
+
+        This ensures that when a widget is deleted, its subscription is properly
+        terminated to prevent memory leaks.
         """
         pass
 
     def set_error_state(self, message):
+        """
+        Puts the widget into a visual error state.
+
+        This disables the widget and displays a red error message in the status label.
+
+        Args:
+            message (str): The error message to display.
+        """
         self.status_label.setText(f"<font color='red'>{message}</font>")
         self.setEnabled(False)
 
     def set_delete_mode(self, deletable):
+        """
+        Activates or deactivates the delete mode overlay.
+
+        Args:
+            deletable (bool): True to show the red overlay, False to hide it.
+        """
         self.is_deletable = deletable
         if deletable:
             self.delete_overlay.resize(self.size())
@@ -195,7 +262,15 @@ class BaseWidget(QFrame):
             self.delete_overlay.hide()
             
     def _handle_press_for_selection_and_drag(self, event):
-        """Unified handler for mouse presses for selection and dragging."""
+        """
+        Internal handler to manage selection and drag/resize initiation.
+
+        This logic is called from mouse press events to determine whether to
+        select, drag, or resize based on keyboard modifiers and click position.
+
+        Args:
+            event (QMouseEvent): The mouse press event.
+        """
         self.raise_()
         is_ctrl_pressed = QApplication.keyboardModifiers() & Qt.KeyboardModifier.ControlModifier
 
@@ -223,6 +298,20 @@ class BaseWidget(QFrame):
                 self.drag_position = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
 
     def eventFilter(self, source, event):
+        """
+        Filters events from child widgets to handle interaction.
+
+        This allows the entire widget to be draggable and selectable, even when
+        the click starts on a child QLabel. It also handles clicks on the
+        delete overlay and dragging of the minimized widget.
+
+        Args:
+            source (QObject): The object that originally received the event.
+            event (QEvent): The event that occurred.
+
+        Returns:
+            bool: True if the event was handled, otherwise False.
+        """
         # This filter is installed on children by propagate_mouse_press.
         # It handles selection and drag initiation for clicks anywhere inside the widget.
         if (source is not self and source is not self.delete_overlay and source is not self.minimized_widget and
@@ -259,6 +348,15 @@ class BaseWidget(QFrame):
         return super().eventFilter(source, event)
         
     def contextMenuEvent(self, event):
+        """
+        Creates and displays a right-click context menu.
+
+        The menu includes options for minimizing/maximizing, stacking order,
+        copying, duplicating, and deleting the widget.
+
+        Args:
+            event (QContextMenuEvent): The context menu event.
+        """
         context_menu = QMenu(self)
         if self.is_minimized:
             maximize_action = QAction("Maximize", self)
@@ -293,14 +391,22 @@ class BaseWidget(QFrame):
         context_menu.exec(event.globalPos())
 
     def bring_to_front(self):
+        """Raises the widget to the top of the stacking order."""
         self.raise_()
         self.state_changed.emit(self.is_minimized)
 
     def send_to_back(self):
+        """Lowers the widget to the bottom of the stacking order."""
         self.lower()
         self.state_changed.emit(self.is_minimized)
 
     def toggle_minimize_state(self):
+        """
+        Toggles the widget between its normal and minimized state.
+
+        When minimizing, it saves the current size and shrinks to a smaller,
+        predefined size. When maximizing, it restores the original size.
+        """
         self.is_minimized = not self.is_minimized
         
         if self.is_minimized:
@@ -330,16 +436,36 @@ class BaseWidget(QFrame):
         self.state_changed.emit(self.is_minimized)
 
     def resizeEvent(self, event):
+        """
+        Ensures the delete overlay is resized along with the widget.
+
+        Args:
+            event (QResizeEvent): The resize event.
+        """
         super().resizeEvent(event)
         if hasattr(self, 'delete_overlay') and self.delete_overlay:
             self.delete_overlay.resize(event.size())
 
     def mousePressEvent(self, event):
+        """
+        Handles left-button mouse presses to initiate selection and dragging.
+
+        Args:
+            event (QMouseEvent): The mouse press event.
+        """
         if event.button() == Qt.MouseButton.LeftButton:
             self._handle_press_for_selection_and_drag(event)
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
+        """
+        Handles mouse movement for dragging and resizing the widget.
+
+        Changes the cursor to a resize cursor when over the resize handle.
+
+        Args:
+            event (QMouseEvent): The mouse move event.
+        """
         if self.drag_position is not None or self.is_resizing:
             if hasattr(self.parent(), 'set_dragged_widget'):
                 self.parent().set_dragged_widget(self)
@@ -358,6 +484,14 @@ class BaseWidget(QFrame):
                 self.setCursor(QCursor(Qt.CursorShape.ArrowCursor))
             
     def mouseReleaseEvent(self, event):
+        """
+        Handles mouse release events to finalize dragging or resizing.
+
+        This method snaps the widget's final position and size to the grid.
+
+        Args:
+            event (QMouseEvent): The mouse release event.
+        """
         if hasattr(self.parent(), 'set_dragged_widget'):
             self.parent().set_dragged_widget(None)
 

@@ -5,8 +5,21 @@ from .base_widget import BaseWidget
 class DisplayWidget(BaseWidget):
     """
     A widget to display a node's value using an efficient OPC-UA subscription.
+
+    This widget shows the real-time value of an OPC UA node. It performs an
+    initial read and then subscribes to the node for any subsequent changes,
+    ensuring the displayed value is always up-to-date with minimal network traffic.
     """
     def __init__(self, config, opcua_logic, parent=None, async_runner=None):
+        """
+        Initializes the DisplayWidget.
+
+        Args:
+            config (dict): The configuration dictionary for the widget.
+            opcua_logic (OpcuaClientLogic): The OPC UA logic instance.
+            parent (QWidget, optional): The parent widget. Defaults to None.
+            async_runner (AsyncRunner, optional): The runner for async tasks. Defaults to None.
+        """
         super().__init__(config, opcua_logic, parent, async_runner)
         
         # --- Standard View ---
@@ -37,13 +50,7 @@ class DisplayWidget(BaseWidget):
             }
             QLabel { color: #f0f0f0; }
         """)
-
-        ## SUBSCRIPTION UPDATE ##
-        # The QTimer is no longer needed.
-        # self.timer = QTimer(self)
-        # self.timer.timeout.connect(self.trigger_read)
         
-        ## SUBSCRIPTION UPDATE ##
         # This will store the handle to the subscription so we can unsubscribe later.
         self.subscription_handle = None
 
@@ -58,15 +65,17 @@ class DisplayWidget(BaseWidget):
         if self.node:
              self.status_label.setText(f"Node: {self.node.nodeid.to_string()}")
         
-        ## SUBSCRIPTION UPDATE ##
         # Subscribe to the node, passing our on_data_changed method as the callback.
         self.subscription_handle = await self.opcua_logic.subscribe_to_node_change(self.node, self.on_data_changed)
 
-    ## SUBSCRIPTION UPDATE ##
     def on_data_changed(self, value):
         """
-        This method is the callback that gets triggered by the subscription.
-        It updates the UI with the new value.
+        Callback method triggered by the OPC UA subscription on data change.
+
+        It updates the UI with the new value, formatting it if necessary.
+
+        Args:
+            value: The new value received from the subscription.
         """
         try:
             display_value = ""
@@ -86,10 +95,11 @@ class DisplayWidget(BaseWidget):
             self.status_label.setText(f"<font color='orange'>Update Error</font>")
             self.minimized_value.setText("ERR")
 
-    ## SUBSCRIPTION UPDATE ##
     def stop_subscription(self):
         """
-        Stops the subscription for this widget. This is called before the widget is deleted.
+        Stops the OPC UA subscription for this widget.
+
+        This is called before the widget is deleted to ensure proper cleanup.
         """
         if self.subscription_handle and self.async_runner:
             self.async_runner.submit(
