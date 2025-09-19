@@ -125,6 +125,24 @@ class MySQLManager:
         except mysql.connector.Error as err:
             return f"Error: {err}"
 
+    def get_all_tables(self):
+        """
+        Retrieves the names of all tables in the current database.
+
+        Returns:
+            list: A list of table names, or an error string.
+        """
+        if not self.connection or not self.connection.is_connected():
+            return "Error: Not connected to a database."
+        try:
+            cursor = self.connection.cursor()
+            cursor.execute("SHOW TABLES")
+            tables = [row[0] for row in cursor.fetchall()]
+            cursor.close()
+            return tables
+        except mysql.connector.Error as err:
+            return f"Error: {err}"
+
     def add_column_to_table(self, table_name, column_name, column_type="VARCHAR(255)"):
         """
         Adds a new column to a specified table if it doesn't exist.

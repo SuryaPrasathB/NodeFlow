@@ -70,11 +70,13 @@ class MySQLWriteNodeDialog(QDialog):
         self.layout = QVBoxLayout(self)
         self.form_layout = QFormLayout()
 
-        self.table_name_input = QLineEdit(self.config.get('table_name', ''))
-        self.refresh_button = QPushButton("Refresh Columns")
-        self.refresh_button.clicked.connect(self.refresh_columns)
+        self.table_name_combo = QComboBox()
+        self.table_name_combo.setEditable(True) # Allow user to enter a new table name
+        self.table_name_combo.currentIndexChanged.connect(self.refresh_columns)
+        self.refresh_button = QPushButton("Refresh")
+        self.refresh_button.clicked.connect(self.refresh_tables_and_columns)
 
-        self.form_layout.addRow(QLabel("Table Name:"), self.table_name_input)
+        self.form_layout.addRow(QLabel("Table Name:"), self.table_name_combo)
         self.form_layout.addRow(self.refresh_button)
 
         self.mappings_layout = QVBoxLayout()
@@ -96,7 +98,7 @@ class MySQLWriteNodeDialog(QDialog):
         # Populate with existing config
         self.available_columns = []
         self.populate_inputs()
-        self.refresh_columns() # Initial column fetch
+        self.refresh_tables_and_columns() # Initial fetch
 
     def populate_inputs(self):
         # Clear existing widgets
@@ -157,8 +159,13 @@ class MySQLWriteNodeDialog(QDialog):
                 widget_info['layout_widget'].setParent(None)
 
 
-    def refresh_columns(self):
-        # Load MySQL settings from QSettings
+    def refresh_tables_and_columns(self):
+        """Refreshes both the table list and the column list."""
+        self.refresh_tables()
+        self.refresh_columns()
+
+    def refresh_tables(self):
+        """Fetches the list of tables from the database and populates the table combo box."""
         settings = QSettings("MyCompany", "NodeFlow")
         host = settings.value("mysql/host", "")
         user = settings.value("mysql/user", "")
@@ -175,21 +182,47 @@ class MySQLWriteNodeDialog(QDialog):
             QMessageBox.critical(self, "Connection Failed", f"Could not connect to database.\n{msg}")
             return
 
-        table_name = self.table_name_input.text()
+        tables = manager.get_all_tables()
+        manager.close()
+
+        if isinstance(tables, list):
+            current_table = self.config.get('table_name', '')
+            self.table_name_combo.clear()
+            self.table_name_combo.addItems(tables)
+            if current_table in tables:
+                self.table_name_combo.setCurrentText(current_table)
+            elif tables:
+                self.table_name_combo.setCurrentIndex(0)
+
+    def refresh_columns(self):
+        """Fetches columns for the selected table and updates the column combo boxes."""
+        table_name = self.table_name_combo.currentText()
         if not table_name:
             self.available_columns = []
         else:
-            columns = manager.get_table_columns(table_name)
-            if isinstance(columns, str) and columns.startswith("Error:"):
-                # Table might not exist, which is okay.
+            settings = QSettings("MyCompany", "NodeFlow")
+            host = settings.value("mysql/host", "")
+            user = settings.value("mysql/user", "")
+            password = settings.value("mysql/password", "")
+            database = settings.value("mysql/database", "")
+
+            if not all([host, user, database]):
                 self.available_columns = []
             else:
-                self.available_columns = columns
-
-        manager.close()
+                manager = MySQLManager(host, user, password, database)
+                success, msg = manager.connect()
+                if not success:
+                    self.available_columns = []
+                else:
+                    columns = manager.get_table_columns(table_name)
+                    if isinstance(columns, str) and columns.startswith("Error:"):
+                        self.available_columns = []
+                    else:
+                        self.available_columns = columns
+                    manager.close()
 
         # Update all comboboxes
-        for input_name, widget_info in self.input_widgets.items():
+        for widget_info in self.input_widgets.values():
             combo = widget_info['combo']
             current_selection = combo.currentText()
             combo.clear()
@@ -198,7 +231,7 @@ class MySQLWriteNodeDialog(QDialog):
                 combo.setCurrentText(current_selection)
 
     def get_config(self):
-        self.config['table_name'] = self.table_name_input.text()
+        self.config['table_name'] = self.table_name_combo.currentText()
 
         # Update inputs and mappings from the widgets
         new_inputs = []

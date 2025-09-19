@@ -8,7 +8,7 @@ and MySQL database credentials using Qt's QSettings.
 import logging
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QFormLayout, QLineEdit,
                              QDialogButtonBox, QComboBox, QLabel, QCheckBox,
-                             QTabWidget, QWidget, QPushButton, QMessageBox)
+                             QTabWidget, QWidget, QPushButton, QMessageBox, QHBoxLayout)
 from PyQt6.QtCore import QSettings
 
 from app.core.mysql_manager import MySQLManager
@@ -92,9 +92,14 @@ class SettingsDialog(QDialog):
         layout.addRow(QLabel("Password:"), self.mysql_password_input)
         layout.addRow(QLabel("Database Name:"), self.mysql_db_input)
 
+        button_layout = QHBoxLayout()
         test_button = QPushButton("Test Connection")
         test_button.clicked.connect(self.test_mysql_connection)
-        layout.addRow(test_button)
+        setup_table_button = QPushButton("Set up Table")
+        setup_table_button.clicked.connect(self.open_setup_table_dialog)
+        button_layout.addWidget(test_button)
+        button_layout.addWidget(setup_table_button)
+        layout.addRow(button_layout)
 
     def test_mysql_connection(self):
         """
@@ -184,3 +189,22 @@ class SettingsDialog(QDialog):
         self.settings.endGroup()
 
         self.accept()
+
+    def open_setup_table_dialog(self):
+        """
+        Opens the dialog to set up a database table.
+        """
+        from .setup_table_dialog import SetupTableDialog
+        
+        # Pass the current MySQL credentials to the dialog
+        host = self.mysql_host_input.text()
+        user = self.mysql_user_input.text()
+        password = self.mysql_password_input.text()
+        database = self.mysql_db_input.text()
+
+        if not all([host, user, database]):
+            QMessageBox.warning(self, "Missing Information", "Please fill in Host, Username, and Database Name before setting up a table.")
+            return
+
+        dialog = SetupTableDialog(self, host, user, password, database)
+        dialog.exec()
