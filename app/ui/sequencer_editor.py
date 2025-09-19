@@ -1695,10 +1695,10 @@ class DataConnection(QGraphicsPathItem):
         if self.end_socket:
             self.end_socket.connections.append(self)
 
-        # Control points for horizontal and vertical segments
-        self.h_control_y1 = None
-        self.h_control_y2 = None
-        self.v_control_x = None
+        # --- NEW: Relative offsets for control points ---
+        self.h_control_y1_offset = 20.0
+        self.h_control_y2_offset = -20.0
+        self.v_control_x_offset = 0.0
 
         self.drag_handle = None # Can be 'v_handle', 'h1_handle', or 'h2_handle'
 
@@ -1762,9 +1762,14 @@ class DataConnection(QGraphicsPathItem):
         start_pos = self.start_socket.scenePos()
         end_pos = self.end_socket.scenePos() if self.end_socket else self._scene.mouse_move_pos
 
-        h1_handle_pos = QPointF((self.v_control_x + start_pos.x()) / 2, self.h_control_y1)
-        v_handle_pos = QPointF(self.v_control_x, (self.h_control_y1 + self.h_control_y2)/2)
-        h2_handle_pos = QPointF((self.v_control_x + end_pos.x()) / 2, self.h_control_y2)
+        # Calculate absolute control points from offsets
+        v_control_x = (start_pos.x() + end_pos.x()) / 2 + self.v_control_x_offset
+        h_control_y1 = start_pos.y() + self.h_control_y1_offset
+        h_control_y2 = end_pos.y() + self.h_control_y2_offset
+
+        h1_handle_pos = QPointF((v_control_x + start_pos.x()) / 2, h_control_y1)
+        v_handle_pos = QPointF(v_control_x, (h_control_y1 + h_control_y2)/2)
+        h2_handle_pos = QPointF((v_control_x + end_pos.x()) / 2, h_control_y2)
 
         return {'h1': h1_handle_pos, 'v': v_handle_pos, 'h2': h2_handle_pos}
 
@@ -1774,19 +1779,16 @@ class DataConnection(QGraphicsPathItem):
         start_pos = self.start_socket.scenePos()
         end_pos = self.end_socket.scenePos() if self.end_socket else self._scene.mouse_move_pos
 
-        # Initialize control points if they don't exist
-        if self.v_control_x is None:
-            self.v_control_x = (start_pos.x() + end_pos.x()) / 2
-        if self.h_control_y1 is None:
-            self.h_control_y1 = start_pos.y() + 20
-        if self.h_control_y2 is None:
-             self.h_control_y2 = end_pos.y() - 20
+        # Calculate absolute control points from offsets
+        v_control_x = (start_pos.x() + end_pos.x()) / 2 + self.v_control_x_offset
+        h_control_y1 = start_pos.y() + self.h_control_y1_offset
+        h_control_y2 = end_pos.y() + self.h_control_y2_offset
 
         # Create a 5-segment path
-        p1 = QPointF(start_pos.x(), self.h_control_y1)
-        p2 = QPointF(self.v_control_x, self.h_control_y1)
-        p3 = QPointF(self.v_control_x, self.h_control_y2)
-        p4 = QPointF(end_pos.x(), self.h_control_y2)
+        p1 = QPointF(start_pos.x(), h_control_y1)
+        p2 = QPointF(v_control_x, h_control_y1)
+        p3 = QPointF(v_control_x, h_control_y2)
+        p4 = QPointF(end_pos.x(), h_control_y2)
 
         path.moveTo(start_pos)
         path.lineTo(p1)
@@ -1826,13 +1828,17 @@ class DataConnection(QGraphicsPathItem):
             event (QGraphicsSceneMouseEvent): The mouse move event.
         """
         if self.drag_handle == 'h1_handle':
-            self.h_control_y1 = event.pos().y()
+            start_pos = self.start_socket.scenePos()
+            self.h_control_y1_offset = event.pos().y() - start_pos.y()
             self.update_path()
         elif self.drag_handle == 'v_handle':
-            self.v_control_x = event.pos().x()
+            start_pos = self.start_socket.scenePos()
+            end_pos = self.end_socket.scenePos() if self.end_socket else self._scene.mouse_move_pos
+            self.v_control_x_offset = event.pos().x() - (start_pos.x() + end_pos.x()) / 2
             self.update_path()
         elif self.drag_handle == 'h2_handle':
-            self.h_control_y2 = event.pos().y()
+            end_pos = self.end_socket.scenePos() if self.end_socket else self._scene.mouse_move_pos
+            self.h_control_y2_offset = event.pos().y() - end_pos.y()
             self.update_path()
         else:
             super().mouseMoveEvent(event)
@@ -1868,9 +1874,9 @@ class DataConnection(QGraphicsPathItem):
             'uuid': self.uuid,
             'start_node_uuid': self.start_socket.parentItem().uuid,
             'end_node_uuid': self.end_socket.parentItem().uuid,
-            'h_control_y1': self.h_control_y1,
-            'h_control_y2': self.h_control_y2,
-            'v_control_x': self.v_control_x,
+            'h_control_y1_offset': self.h_control_y1_offset,
+            'h_control_y2_offset': self.h_control_y2_offset,
+            'v_control_x_offset': self.v_control_x_offset,
             'end_socket_label': self.end_socket.label if hasattr(self.end_socket, 'label') else None
         }
 
@@ -1972,6 +1978,14 @@ class SequenceNode(QGraphicsObject):
                 # Distribute sockets along the top edge
                 socket.setPos(self.width * (i + 1) / (num_inputs + 1), 0)
                 self.data_in_sockets[input_name] = socket
+        elif node_type == NodeType.COMPUTE.value:
+            # Re-create the standard 'A', 'B', 'C' sockets
+            self.data_in_sockets['A'] = DataSocket(self, is_output=False, label='A')
+            self.data_in_sockets['A'].setPos(self.width * 0.25, 0)
+            self.data_in_sockets['B'] = DataSocket(self, is_output=False, label='B')
+            self.data_in_sockets['B'].setPos(self.width * 0.50, 0)
+            self.data_in_sockets['C'] = DataSocket(self, is_output=False, label='C')
+            self.data_in_sockets['C'].setPos(self.width * 0.75, 0)
         elif node_type == NodeType.MYSQL_READ.value:
             self.data_out_socket = DataSocket(self, is_output=True, label="Out")
             self.data_out_socket.setPos(self.width / 2, self.height)
@@ -3461,8 +3475,9 @@ class SequenceEditor(QGraphicsView):
 
                     if start_node.data_out_socket and end_socket:
                         connection = DataConnection(start_node.data_out_socket, end_socket, self.scene, conn_data.get('uuid'))
-                        if conn_data.get('control_point'):
-                            cp = conn_data['control_point']
-                            connection.control_point = QPointF(cp['x'], cp['y'])
+                        # Load control point offsets, providing defaults for older save files
+                        connection.h_control_y1_offset = conn_data.get('h_control_y1_offset', 20.0)
+                        connection.h_control_y2_offset = conn_data.get('h_control_y2_offset', -20.0)
+                        connection.v_control_x_offset = conn_data.get('v_control_x_offset', 0.0)
                         connection.update_path()
                         self.scene.addItem(connection)
