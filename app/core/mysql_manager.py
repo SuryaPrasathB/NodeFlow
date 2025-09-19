@@ -1,3 +1,4 @@
+import logging
 import mysql.connector
 from mysql.connector import errorcode
 
@@ -26,6 +27,7 @@ class MySQLManager:
         """
         Establishes a connection to the MySQL server and optionally to a database.
         """
+        logging.info(f"Attempting to connect to database '{self.database}'.")
         try:
             self.connection = mysql.connector.connect(
                 host=self.host,
@@ -34,8 +36,10 @@ class MySQLManager:
                 database=self.database
             )
             self.cursor = self.connection.cursor()
+            logging.info("Connection successful.")
             return True, "Connection successful"
         except mysql.connector.Error as err:
+            logging.error(f"Failed to connect to database: {err}", exc_info=True)
             if err.errno == errorcode.ER_ACCESS_DENIED_ERROR:
                 return False, "Something is wrong with your user name or password"
             elif err.errno == errorcode.ER_BAD_DB_ERROR:
@@ -76,19 +80,27 @@ class MySQLManager:
         """
         Creates the database if it does not already exist.
         """
+        logging.info(f"Attempting to create database '{self.database}' if it does not exist.")
+        if not self.database or not self.database.strip():
+            logging.warning("Database name is empty or whitespace. Aborting creation.")
+            return False, "Database name cannot be empty."
         try:
             # Connect to MySQL server without specifying a database
+            logging.info("Connecting to MySQL server without a specific database.")
             temp_connection = mysql.connector.connect(
                 host=self.host,
                 user=self.user,
                 password=self.password
             )
             temp_cursor = temp_connection.cursor()
+            logging.info(f"Executing query: CREATE DATABASE IF NOT EXISTS `{self.database}`")
             temp_cursor.execute(f"CREATE DATABASE IF NOT EXISTS `{self.database}`")
             temp_cursor.close()
             temp_connection.close()
+            logging.info(f"Database '{self.database}' created or already exists.")
             return True, f"Database '{self.database}' created or already exists."
         except mysql.connector.Error as err:
+            logging.error(f"Failed to create database: {err}", exc_info=True)
             return False, f"Failed to create database: {err}"
 
     def get_table_columns(self, table_name):

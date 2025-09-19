@@ -5,6 +5,7 @@ This module contains the SettingsDialog class, which allows users to configure
 and persist application settings like the default OPC-UA server URL, UI theme,
 and MySQL database credentials using Qt's QSettings.
 """
+import logging
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QFormLayout, QLineEdit,
                              QDialogButtonBox, QComboBox, QLabel, QCheckBox,
                              QTabWidget, QWidget, QPushButton, QMessageBox)
@@ -101,38 +102,48 @@ class SettingsDialog(QDialog):
         """
         try:
             from app.core.mysql_manager import MySQLManager
-            import logging
 
+            logging.info("Attempting to test MySQL connection.")
             host = self.mysql_host_input.text()
             user = self.mysql_user_input.text()
             password = self.mysql_password_input.text()
             database = self.mysql_db_input.text()
+            logging.info(f"MySQL connection details - Host: {host}, User: {user}, Database: {database}")
 
-            if not all([host, user, database]):
-                QMessageBox.warning(self, "Missing Information", "Please fill in Host, Username, and Database Name.")
+            if not all(val.strip() for val in [host, user, database]):
+                logging.warning("MySQL connection test failed: Missing information.")
+                QMessageBox.warning(self, "Missing Information", "Please fill in Host, Username, and Database Name. These fields cannot be empty or contain only whitespace.")
                 return
 
             # Use a temporary manager to test connection
+            logging.info("Creating MySQLManager instance.")
             manager = MySQLManager(host=host, user=user, password=password, database=database)
 
             # First, try to create the database. This connects to the server without a db.
+            logging.info("Attempting to create database if not exists.")
             success, message = manager.create_database_if_not_exists()
             if not success:
+                logging.error(f"Database creation/verification failed: {message}")
                 QMessageBox.critical(self, "Connection Failed", f"Could not create or verify database existence.\nError: {message}")
                 return
+            logging.info("Database creation/verification successful.")
 
             # Now, try to connect to the specific database
+            logging.info("Attempting to connect to the database.")
             success, message = manager.connect()
             if success:
+                logging.info("MySQL connection successful.")
                 QMessageBox.information(self, "Connection Successful", "Successfully connected to the MySQL database.")
                 manager.close()
+                logging.info("MySQL connection closed.")
             else:
+                logging.error(f"MySQL connection failed: {message}")
                 QMessageBox.critical(self, "Connection Failed", f"Failed to connect to the database.\nError: {message}")
         except ImportError:
             logging.error("MySQL connector not found. Please install it with 'pip install mysql-connector-python'")
             QMessageBox.critical(self, "Dependency Error", "The 'mysql-connector-python' library is not installed. Please install it via pip and restart the application.")
         except Exception as e:
-            logging.error(f"An unexpected error occurred during MySQL connection test: {e}")
+            logging.error(f"An unexpected error occurred during MySQL connection test: {e}", exc_info=True)
             QMessageBox.critical(self, "Error", f"An unexpected error occurred: {e}")
 
     def load_settings(self):
