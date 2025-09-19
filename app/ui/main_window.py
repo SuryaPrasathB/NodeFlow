@@ -892,7 +892,7 @@ class MainWindow(QMainWindow):
         self.toggle_connection_action.triggered.connect(self.toggle_connection)
         connections_menu.addAction(self.toggle_connection_action)
         connections_menu.addSeparator()
-        connections_menu.addAction("Server Settings...", self.open_server_settings_dialog)
+        #connections_menu.addAction("Server Settings...", self.open_server_settings_dialog)
         connections_menu.addAction("Application Settings...", self.open_application_settings_dialog)
 
         # --- View Menu ---
