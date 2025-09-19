@@ -99,31 +99,41 @@ class SettingsDialog(QDialog):
         """
         Tests the MySQL connection using the provided credentials.
         """
-        host = self.mysql_host_input.text()
-        user = self.mysql_user_input.text()
-        password = self.mysql_password_input.text()
-        database = self.mysql_db_input.text()
+        try:
+            from app.core.mysql_manager import MySQLManager
+            import logging
 
-        if not all([host, user, database]):
-            QMessageBox.warning(self, "Missing Information", "Please fill in Host, Username, and Database Name.")
-            return
+            host = self.mysql_host_input.text()
+            user = self.mysql_user_input.text()
+            password = self.mysql_password_input.text()
+            database = self.mysql_db_input.text()
 
-        # Use a temporary manager to test connection
-        manager = MySQLManager(host=host, user=user, password=password, database=database)
+            if not all([host, user, database]):
+                QMessageBox.warning(self, "Missing Information", "Please fill in Host, Username, and Database Name.")
+                return
 
-        # First, try to create the database. This connects to the server without a db.
-        success, message = manager.create_database_if_not_exists()
-        if not success:
-            QMessageBox.critical(self, "Connection Failed", f"Could not create or verify database existence.\nError: {message}")
-            return
+            # Use a temporary manager to test connection
+            manager = MySQLManager(host=host, user=user, password=password, database=database)
 
-        # Now, try to connect to the specific database
-        success, message = manager.connect()
-        if success:
-            QMessageBox.information(self, "Connection Successful", "Successfully connected to the MySQL database.")
-            manager.close()
-        else:
-            QMessageBox.critical(self, "Connection Failed", f"Failed to connect to the database.\nError: {message}")
+            # First, try to create the database. This connects to the server without a db.
+            success, message = manager.create_database_if_not_exists()
+            if not success:
+                QMessageBox.critical(self, "Connection Failed", f"Could not create or verify database existence.\nError: {message}")
+                return
+
+            # Now, try to connect to the specific database
+            success, message = manager.connect()
+            if success:
+                QMessageBox.information(self, "Connection Successful", "Successfully connected to the MySQL database.")
+                manager.close()
+            else:
+                QMessageBox.critical(self, "Connection Failed", f"Failed to connect to the database.\nError: {message}")
+        except ImportError:
+            logging.error("MySQL connector not found. Please install it with 'pip install mysql-connector-python'")
+            QMessageBox.critical(self, "Dependency Error", "The 'mysql-connector-python' library is not installed. Please install it via pip and restart the application.")
+        except Exception as e:
+            logging.error(f"An unexpected error occurred during MySQL connection test: {e}")
+            QMessageBox.critical(self, "Error", f"An unexpected error occurred: {e}")
 
     def load_settings(self):
         """
