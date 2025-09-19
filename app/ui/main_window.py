@@ -892,7 +892,8 @@ class MainWindow(QMainWindow):
         self.toggle_connection_action.triggered.connect(self.toggle_connection)
         connections_menu.addAction(self.toggle_connection_action)
         connections_menu.addSeparator()
-        connections_menu.addAction("Server Settings...", self.open_server_settings_dialog)
+        #connections_menu.addAction("Server Settings...", self.open_server_settings_dialog)
+        connections_menu.addAction("Application Settings...", self.open_application_settings_dialog)
 
         # --- View Menu ---
         view_menu = menu_bar.addMenu("View")
@@ -1634,6 +1635,10 @@ class MainWindow(QMainWindow):
 
     def open_server_settings_dialog(self):
         dialog = ServerSettingsDialog(self)
+        dialog.exec()
+
+    def open_application_settings_dialog(self):
+        dialog = SettingsDialog(self)
         dialog.exec()
 
     def apply_theme(self, theme_name):

@@ -16,7 +16,7 @@ from enum import Enum
 from PyQt6.QtWidgets import (QGraphicsView, QGraphicsScene, QGraphicsObject, QGraphicsTextItem,
                              QStyleOptionGraphicsItem, QWidget, QGraphicsPathItem, QStyle,
                              QInputDialog, QLineEdit, QDialog, QFormLayout, QDialogButtonBox, QVBoxLayout, QMenu,
-                             QComboBox, QGraphicsProxyWidget, QToolTip, QColorDialog, QPushButton)
+                             QComboBox, QGraphicsProxyWidget, QToolTip, QColorDialog, QPushButton, QTextEdit, QMessageBox, QLabel, QHBoxLayout)
 from PyQt6.QtCore import Qt, QRectF, QPointF, pyqtSignal, QObject, QPropertyAnimation
 from PyQt6.QtGui import (QPainter, QColor, QBrush, QPen, QPainterPath, QKeyEvent,
                          QPainterPathStroker, QUndoCommand, QUndoStack, QFont, QTransform, QAction, QIcon)
@@ -29,6 +29,224 @@ from .error_dialog import show_error_message
 from app.ui.widgets.find_widget import FindWidget
 from app.utils.paths import resource_path
 from .python_script_dialog import PythonScriptDialog
+from app.core.mysql_manager import MySQLManager
+from PyQt6.QtCore import QSettings
+
+class MySQLReadNodeDialog(QDialog):
+    """A dialog for configuring the MySQL Read Node."""
+    def __init__(self, parent=None, current_config=None):
+        super().__init__(parent)
+        self.setWindowTitle("Configure MySQL Read Node")
+        self.config = current_config or {}
+        self.setMinimumWidth(400)
+
+        self.layout = QVBoxLayout(self)
+        self.form_layout = QFormLayout()
+
+        self.query_input = QTextEdit(self.config.get('query', ''))
+        self.form_layout.addRow(QLabel("SELECT Query:"), self.query_input)
+
+        self.layout.addLayout(self.form_layout)
+
+        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        self.layout.addWidget(button_box)
+
+    def get_config(self):
+        self.config['query'] = self.query_input.toPlainText()
+        self.config['label'] = f"Read: {self.config['query'][:20]}..."
+        return self.config
+
+class MySQLWriteNodeDialog(QDialog):
+    """A dialog for configuring the MySQL Write Node."""
+    def __init__(self, parent=None, current_config=None):
+        super().__init__(parent)
+        self.setWindowTitle("Configure MySQL Write Node")
+        self.config = current_config or {}
+        self.setMinimumWidth(400)
+
+        # UI Elements
+        self.layout = QVBoxLayout(self)
+        self.form_layout = QFormLayout()
+
+        self.table_name_combo = QComboBox()
+        self.table_name_combo.setEditable(True) # Allow user to enter a new table name
+        self.table_name_combo.currentIndexChanged.connect(self.refresh_columns)
+        self.refresh_button = QPushButton("Refresh")
+        self.refresh_button.clicked.connect(self.refresh_tables_and_columns)
+
+        self.form_layout.addRow(QLabel("Table Name:"), self.table_name_combo)
+        self.form_layout.addRow(self.refresh_button)
+
+        self.mappings_layout = QVBoxLayout()
+        self.input_widgets = {} # {input_name: {'label': QLabel, 'combo': QComboBox}}
+
+        self.add_input_button = QPushButton("Add Input Socket")
+        self.add_input_button.clicked.connect(self.add_input_socket)
+
+        self.layout.addLayout(self.form_layout)
+        self.layout.addLayout(self.mappings_layout)
+        self.layout.addWidget(self.add_input_button)
+
+        # Dialog Buttons
+        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        self.layout.addWidget(button_box)
+
+        # Populate with existing config
+        self.available_columns = []
+        self.populate_inputs()
+        self.refresh_tables_and_columns() # Initial fetch
+
+    def populate_inputs(self):
+        # Clear existing widgets
+        for i in reversed(range(self.mappings_layout.count())):
+            widget_item = self.mappings_layout.itemAt(i)
+            if widget_item and widget_item.widget():
+                widget_item.widget().setParent(None)
+        self.input_widgets.clear()
+
+        inputs = self.config.get('inputs', [])
+        for input_name in inputs:
+            self.add_mapping_widget(input_name)
+
+    def add_mapping_widget(self, input_name):
+        h_layout = QHBoxLayout()
+        label = QLineEdit(input_name)
+        label.setPlaceholderText("Input Socket Name")
+        combo = QComboBox()
+        combo.addItems(self.available_columns)
+
+        # Set current selection
+        current_mapping = self.config.get('mappings', {}).get(input_name)
+        if current_mapping in self.available_columns:
+            combo.setCurrentText(current_mapping)
+
+        remove_button = QPushButton("X")
+        remove_button.setFixedWidth(30)
+        remove_button.clicked.connect(lambda _, name=input_name: self.remove_input_socket(name))
+
+        h_layout.addWidget(QLabel("Input:"))
+        h_layout.addWidget(label)
+        h_layout.addWidget(QLabel("-> Column:"))
+        h_layout.addWidget(combo)
+        h_layout.addWidget(remove_button)
+
+        container_widget = QWidget()
+        container_widget.setLayout(h_layout)
+        self.mappings_layout.addWidget(container_widget)
+
+        self.input_widgets[input_name] = {'label_widget': label, 'combo': combo, 'layout_widget': container_widget}
+
+
+    def add_input_socket(self):
+        input_name, ok = QInputDialog.getText(self, "Add Input", "Enter new input socket name:")
+        if ok and input_name:
+            if input_name not in self.config.get('inputs', []):
+                self.config.setdefault('inputs', []).append(input_name)
+                self.add_mapping_widget(input_name)
+
+    def remove_input_socket(self, input_name):
+        if input_name in self.config.get('inputs', []):
+            self.config['inputs'].remove(input_name)
+            if input_name in self.config.get('mappings', {}):
+                del self.config['mappings'][input_name]
+
+            if input_name in self.input_widgets:
+                widget_info = self.input_widgets.pop(input_name)
+                widget_info['layout_widget'].setParent(None)
+
+
+    def refresh_tables_and_columns(self):
+        """Refreshes both the table list and the column list."""
+        self.refresh_tables()
+        self.refresh_columns()
+
+    def refresh_tables(self):
+        """Fetches the list of tables from the database and populates the table combo box."""
+        settings = QSettings("MyCompany", "NodeFlow")
+        host = settings.value("mysql/host", "")
+        user = settings.value("mysql/user", "")
+        password = settings.value("mysql/password", "")
+        database = settings.value("mysql/database", "")
+
+        if not all([host, user, database]):
+            QMessageBox.warning(self, "MySQL Not Configured", "Please configure MySQL connection in Application Settings.")
+            return
+
+        manager = MySQLManager(host, user, password, database)
+        success, msg = manager.connect()
+        if not success:
+            QMessageBox.critical(self, "Connection Failed", f"Could not connect to database.\n{msg}")
+            return
+
+        tables = manager.get_all_tables()
+        manager.close()
+
+        if isinstance(tables, list):
+            current_table = self.config.get('table_name', '')
+            self.table_name_combo.clear()
+            self.table_name_combo.addItems(tables)
+            if current_table in tables:
+                self.table_name_combo.setCurrentText(current_table)
+            elif tables:
+                self.table_name_combo.setCurrentIndex(0)
+
+    def refresh_columns(self):
+        """Fetches columns for the selected table and updates the column combo boxes."""
+        table_name = self.table_name_combo.currentText()
+        if not table_name:
+            self.available_columns = []
+        else:
+            settings = QSettings("MyCompany", "NodeFlow")
+            host = settings.value("mysql/host", "")
+            user = settings.value("mysql/user", "")
+            password = settings.value("mysql/password", "")
+            database = settings.value("mysql/database", "")
+
+            if not all([host, user, database]):
+                self.available_columns = []
+            else:
+                manager = MySQLManager(host, user, password, database)
+                success, msg = manager.connect()
+                if not success:
+                    self.available_columns = []
+                else:
+                    columns = manager.get_table_columns(table_name)
+                    if isinstance(columns, str) and columns.startswith("Error:"):
+                        self.available_columns = []
+                    else:
+                        self.available_columns = columns
+                    manager.close()
+
+        # Update all comboboxes
+        for widget_info in self.input_widgets.values():
+            combo = widget_info['combo']
+            current_selection = combo.currentText()
+            combo.clear()
+            combo.addItems(self.available_columns)
+            if current_selection in self.available_columns:
+                combo.setCurrentText(current_selection)
+
+    def get_config(self):
+        self.config['table_name'] = self.table_name_combo.currentText()
+
+        # Update inputs and mappings from the widgets
+        new_inputs = []
+        new_mappings = {}
+        for old_name, widget_info in self.input_widgets.items():
+            # The key in input_widgets is the original name. The new name is in the QLineEdit.
+            new_name = widget_info['label_widget'].text()
+            if new_name:
+                new_inputs.append(new_name)
+                new_mappings[new_name] = widget_info['combo'].currentText()
+
+        self.config['inputs'] = new_inputs
+        self.config['mappings'] = new_mappings
+        self.config['label'] = f"Write to {self.config['table_name']}"
+        return self.config
 
 class DebugState(Enum):
     """Enumeration for the different states of the sequence debugger."""
@@ -52,6 +270,8 @@ class NodeType(Enum):
     SET_VARIABLE = "Set Variable"
     GET_VARIABLE = "Get Variable"
     PYTHON_SCRIPT = "Python Script"
+    MYSQL_WRITE = "MySQL Write"
+    MYSQL_READ = "MySQL Read"
 
 class CommentNode(QGraphicsTextItem):
     """
@@ -642,6 +862,8 @@ class SequenceEngine(QObject):
             NodeType.FORK.value: self.execute_fork_node,
             NodeType.JOIN.value: self.execute_join_node,
             NodeType.PYTHON_SCRIPT.value: self.execute_python_script_node,
+            NodeType.MYSQL_WRITE.value: self.execute_mysql_write_node,
+            NodeType.MYSQL_READ.value: self.execute_mysql_read_node,
         }
         executor = execution_map.get(node_type)
         if executor:
@@ -1121,6 +1343,142 @@ class SequenceEngine(QObject):
             return output_value, True
         except Exception as e:
             logging.error(f"Failed to execute Python script node: {e}")
+            return None, False
+
+    async def execute_mysql_write_node(self, node_data):
+        """
+        Executes a 'MySQL Write' node.
+
+        It connects to the configured MySQL database, resolves input values,
+        and inserts a new row into the specified table. It will dynamically
+        add columns to the table if they are mapped in the node but do not
+        exist in the database.
+        """
+        try:
+            config = node_data['config']
+            table_name = config.get('table_name')
+            mappings = config.get('mappings', {})
+            inputs = config.get('inputs', [])
+
+            if not table_name or not mappings:
+                raise ValueError("MySQL Write node is not configured.")
+
+            # Load MySQL settings from QSettings
+            settings = QSettings("MyCompany", "NodeFlow")
+            host = settings.value("mysql/host")
+            user = settings.value("mysql/user")
+            password = settings.value("mysql/password")
+            database = settings.value("mysql/database")
+
+            if not all([host, user, database]):
+                raise ConnectionError("MySQL connection details are not configured in settings.")
+
+            manager = MySQLManager(host, user, password, database)
+            conn_success, conn_msg = manager.connect()
+            if not conn_success:
+                raise ConnectionError(f"MySQL connection failed: {conn_msg}")
+
+            try:
+                # 1. Gather all data from input sockets
+                column_values = {}
+                for input_name in inputs:
+                    column_name = mappings.get(input_name)
+                    if not column_name: continue # Skip if not mapped
+
+                    # Find the source node for this input socket
+                    source_node_uuid = None
+                    for conn in self.all_sequences[self.current_sequence_name].get('data_connections', []):
+                        if conn['end_node_uuid'] == node_data['uuid'] and conn.get('end_socket_label') == input_name:
+                            source_node_uuid = conn['start_node_uuid']
+                            break
+
+                    if source_node_uuid and source_node_uuid in self.execution_context:
+                        column_values[column_name] = self.execution_context[source_node_uuid]
+                    else:
+                        logging.warning(f"No input value found for '{input_name}' on MySQL Write node.")
+                        column_values[column_name] = None
+
+                if not column_values:
+                    logging.warning("MySQL Write node has no values to insert.")
+                    return True, True
+
+                # 2. Ensure table and columns exist
+                db_columns = manager.get_table_columns(table_name)
+                if isinstance(db_columns, str) and "1146" in db_columns: # Table doesn't exist
+                    manager.execute_query(f"CREATE TABLE `{table_name}` (id INT AUTO_INCREMENT PRIMARY KEY);")
+                    db_columns = []
+
+                for col_name in column_values.keys():
+                    if col_name not in db_columns:
+                        logging.info(f"Column '{col_name}' not found in table '{table_name}'. Adding it.")
+                        add_success, add_msg = manager.add_column_to_table(table_name, col_name, "VARCHAR(255)")
+                        if not add_success:
+                            raise Exception(f"Failed to add column '{col_name}': {add_msg}")
+
+                # 3. Construct and execute INSERT query
+                columns = ', '.join([f"`{c}`" for c in column_values.keys()])
+                placeholders = ', '.join(['%s'] * len(column_values))
+                values = tuple(column_values.values())
+
+                query = f"INSERT INTO `{table_name}` ({columns}) VALUES ({placeholders})"
+                logging.info(f"Executing MySQL Write: {query} with values {values}")
+                result = manager.execute_query(query, values)
+                if isinstance(result, str) and result.startswith("Error:"):
+                    raise Exception(f"Failed to insert data: {result}")
+
+            finally:
+                manager.close()
+
+            return True, True
+        except Exception as e:
+            logging.error(f"Failed to execute MySQL Write node: {e}")
+            return None, False
+
+    async def execute_mysql_read_node(self, node_data):
+        """
+        Executes a 'MySQL Read' node.
+
+        It connects to the database, executes the configured SELECT query,
+        and places the result into the execution context for other nodes to use.
+        """
+        try:
+            config = node_data['config']
+            query = config.get('query')
+
+            if not query or not query.strip().upper().startswith("SELECT"):
+                raise ValueError("MySQL Read node requires a valid SELECT query.")
+
+            # Load MySQL settings from QSettings
+            settings = QSettings("MyCompany", "NodeFlow")
+            host = settings.value("mysql/host")
+            user = settings.value("mysql/user")
+            password = settings.value("mysql/password")
+            database = settings.value("mysql/database")
+
+            if not all([host, user, database]):
+                raise ConnectionError("MySQL connection details are not configured in settings.")
+
+            manager = MySQLManager(host, user, password, database)
+            conn_success, conn_msg = manager.connect()
+            if not conn_success:
+                raise ConnectionError(f"MySQL connection failed: {conn_msg}")
+
+            try:
+                logging.info(f"Executing MySQL Read: {query}")
+                result = manager.execute_query(query)
+                if isinstance(result, str) and result.startswith("Error:"):
+                    raise Exception(f"Failed to execute query: {result}")
+
+                # Store result for the output data socket
+                self.execution_context[node_data['uuid']] = result
+                logging.info(f"MySQL Read returned {len(result)} rows.")
+
+            finally:
+                manager.close()
+
+            return result, True
+        except Exception as e:
+            logging.error(f"Failed to execute MySQL Read node: {e}")
             return None, False
 
     async def execute_join_node(self, node_data):
@@ -1617,6 +1975,17 @@ class SequenceNode(QGraphicsObject):
             self.data_out_socket.setPos(self.width / 2, self.height)
         elif node_type in [NodeType.FOR_LOOP.value, NodeType.WHILE_LOOP.value]:
              self.out_port.hide()
+        elif node_type == NodeType.MYSQL_WRITE.value:
+            inputs = self.config.get('inputs', [])
+            num_inputs = len(inputs)
+            for i, input_name in enumerate(inputs):
+                socket = DataSocket(self, is_output=False, label=input_name)
+                # Distribute sockets along the top edge
+                socket.setPos(self.width * (i + 1) / (num_inputs + 1), 0)
+                self.data_in_sockets[input_name] = socket
+        elif node_type == NodeType.MYSQL_READ.value:
+            self.data_out_socket = DataSocket(self, is_output=True, label="Out")
+            self.data_out_socket.setPos(self.width / 2, self.height)
 
     def toggle_breakpoint(self):
         """Toggles the breakpoint state for this node and triggers a repaint."""
@@ -2325,6 +2694,9 @@ class SequenceScene(QGraphicsScene):
             add_node_menu.addSeparator()
             add_python_script_action = add_node_menu.addAction(NodeType.PYTHON_SCRIPT.value)
             add_node_menu.addSeparator()
+            add_mysql_write_action = add_node_menu.addAction(NodeType.MYSQL_WRITE.value)
+            add_mysql_read_action = add_node_menu.addAction(NodeType.MYSQL_READ.value)
+            add_node_menu.addSeparator()
             add_comment_action = add_node_menu.addAction(NodeType.COMMENT.value)
 
             action = menu.exec(event.screenPos())
@@ -2356,6 +2728,10 @@ class SequenceScene(QGraphicsScene):
                 self.add_new_node_requested.emit(NodeType.JOIN, pos)
             elif action == add_python_script_action:
                 self.add_new_node_requested.emit(NodeType.PYTHON_SCRIPT, pos)
+            elif action == add_mysql_write_action:
+                self.add_new_node_requested.emit(NodeType.MYSQL_WRITE, pos)
+            elif action == add_mysql_read_action:
+                self.add_new_node_requested.emit(NodeType.MYSQL_READ, pos)
 
     def set_node_color(self, node):
         """Opens a color dialog and sets the custom color for the given node."""
@@ -2503,7 +2879,11 @@ class SequenceScene(QGraphicsScene):
         elif isinstance(item, SequenceNode):
             node_type = item.config.get('node_type')
             dialog = None
-            if node_type == NodeType.METHOD_CALL.value or node_type == NodeType.WRITE_VALUE.value:
+            if node_type == NodeType.MYSQL_WRITE.value:
+                dialog = MySQLWriteNodeDialog(self.views()[0], current_config=item.config)
+            elif node_type == NodeType.MYSQL_READ.value:
+                dialog = MySQLReadNodeDialog(self.views()[0], current_config=item.config)
+            elif node_type == NodeType.METHOD_CALL.value or node_type == NodeType.WRITE_VALUE.value:
                 dialog = NodeConfigDialog(self.views()[0], current_config=item.config)
             elif node_type == NodeType.PYTHON_SCRIPT.value:
                 dialog = PythonScriptDialog(self.views()[0], script=item.config.get('script', ''))
@@ -2960,6 +3340,14 @@ class SequenceEditor(QGraphicsView):
         elif node_type == NodeType.PYTHON_SCRIPT:
             config['label'] = "Python Script"
             config['script'] = "# INPUT is available as a variable\n# Set the output value using: output = ..."
+        elif node_type == NodeType.MYSQL_WRITE:
+            config['label'] = "MySQL Write"
+            config['table_name'] = "my_table"
+            config['mappings'] = {} # {'socket_name': 'column_name'}
+            config['inputs'] = ['input1', 'input2'] # Default inputs
+        elif node_type == NodeType.MYSQL_READ:
+            config['label'] = "MySQL Read"
+            config['query'] = "SELECT * FROM my_table"
 
         command = AddNodeCommand(self.scene, config, position)
         self.scene.undo_stack.push(command)
