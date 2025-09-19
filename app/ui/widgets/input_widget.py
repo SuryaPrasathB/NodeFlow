@@ -5,7 +5,23 @@ from asyncua import ua
 import asyncio
 
 class InputWidget(BaseWidget):
+    """
+    A widget for writing a value to an OPC UA node.
+
+    It provides a text input field and a 'Write' button. It performs an
+    initial read to populate the field with the node's current value.
+    The widget can be configured for numerical or string inputs.
+    """
     def __init__(self, config, opcua_logic, parent=None, async_runner=None):
+        """
+        Initializes the InputWidget.
+
+        Args:
+            config (dict): The configuration dictionary for the widget.
+            opcua_logic (OpcuaClientLogic): The OPC UA logic instance.
+            parent (QWidget, optional): The parent widget. Defaults to None.
+            async_runner (AsyncRunner, optional): The runner for async tasks. Defaults to None.
+        """
         super().__init__(config, opcua_logic, parent, async_runner)
         
         h_layout = QHBoxLayout()
@@ -29,6 +45,9 @@ class InputWidget(BaseWidget):
         self.minimized_widget.setStyleSheet("#minimizedWidget { background-color: #3c3f41; border: 1px solid #555; border-radius: 4px; } QLabel { color: #f0f0f0; }")
 
     async def setup_widget(self):
+        """
+        Performs an initial read of the node's value to populate the input field.
+        """
         try:
             value = await self.opcua_logic.read_value(self.node)
             self.input_field.setText(str(value))
@@ -38,9 +57,20 @@ class InputWidget(BaseWidget):
             self.set_error_state(f"Setup Error: {e}")
 
     def on_write_clicked(self):
+        """
+        Slot for the 'Write' button's clicked signal.
+
+        Submits the `write_value` coroutine to the async runner.
+        """
         if self.async_runner: self.async_runner.submit(self.write_value())
 
     async def write_value(self):
+        """
+        Reads the input field, converts the value to the correct type,
+        and writes it to the OPC UA node.
+
+        Updates the status label with the result of the operation.
+        """
         value_str = self.input_field.text()
         try:
             self.status_label.setText("Status: Writing...")

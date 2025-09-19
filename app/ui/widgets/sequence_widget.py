@@ -5,22 +5,37 @@ from .base_widget import BaseWidget
 
 class SequenceWidget(BaseWidget):
     """
-    A button widget on the dashboard that can trigger a named sequence
-    either once or in a continuous loop, and can also stop it.
+    A dashboard widget to control a pre-defined sequence.
+
+    This widget acts as a remote control for a sequence created in the
+    Sequencer Editor. It can start the sequence for a single run or in a
+    continuous loop, and can stop a running sequence. It communicates its
+    intentions to the main window via signals.
+
+    Attributes:
+        run_sequence_requested (pyqtSignal): Emitted to request a sequence run.
+                                             Passes sequence_name (str) and loop (bool).
+        stop_sequence_requested (pyqtSignal): Emitted to request a sequence stop.
+                                              Passes sequence_name (str).
     """
     run_sequence_requested = pyqtSignal(str, bool)
     stop_sequence_requested = pyqtSignal(str)
-    # FIX: Explicitly define the signal here to resolve the AttributeError.
-    # Even though it's in the parent, adding it here makes it discoverable.
     widget_changed = pyqtSignal()
 
     def __init__(self, config, opcua_logic, parent=None, async_runner=None):
+        """
+        Initializes the SequenceWidget.
+
+        Args:
+            config (dict): The configuration dictionary for the widget.
+            opcua_logic (OpcuaClientLogic): The OPC UA logic instance.
+            parent (QWidget, optional): The parent widget. Defaults to None.
+            async_runner (AsyncRunner, optional): The runner for async tasks. Defaults to None.
+        """
         super().__init__(config, opcua_logic, parent, async_runner)
         
         self.sequence_name = config.get('sequence_name', 'N/A')
         
-        ## UX REFINEMENT ##
-        # This state now tracks if the sequence is running at all (loop or once)
         self.is_running = False
 
         # --- Standard View ---
@@ -50,22 +65,37 @@ class SequenceWidget(BaseWidget):
         """)
 
     async def setup_widget(self):
+        """
+        Finalizes widget setup. For this widget, it just sets a ready status
+        as it does not directly connect to an OPC UA node.
+        """
         self.status_label.setText(f"Ready to run sequence.")
         self.node = True
 
-    ## UX REFINEMENT ##
-    # The button click is now a toggle for running or stopping the sequence.
     def on_run_clicked(self):
+        """
+        Handles the main button click, acting as a toggle.
+
+        If the sequence is running, it emits a stop request. If not, it emits
+        a request to run the sequence once.
+        """
         if self.is_running:
             self.stop_sequence_requested.emit(self.sequence_name)
         else:
             # Default click action is still to run once.
             self.run_sequence_requested.emit(self.sequence_name, False)
 
-    ## UX REFINEMENT ##
-    # Renamed and enhanced to handle all running states.
     def set_running_state(self, is_running, is_looping=False):
-        """Public method for MainWindow to update this widget's UI."""
+        """
+        Updates the widget's UI to reflect the current state of the sequence.
+
+        This is a public method intended to be called by the main window, which
+        manages the actual sequence execution.
+
+        Args:
+            is_running (bool): True if the sequence is currently running.
+            is_looping (bool, optional): True if the sequence is in loop mode.
+        """
         self.is_running = is_running
         if self.is_running:
             state_text = "Running in Loop..." if is_looping else "Running (Once)..."
@@ -84,6 +114,16 @@ class SequenceWidget(BaseWidget):
             self.minimized_button.setStyleSheet("font-size: 11pt;")
 
     def contextMenuEvent(self, event):
+        """
+        Creates and displays a dynamic right-click context menu.
+
+        If the sequence is running, it shows a 'Stop' action. If idle, it shows
+        'Run Once' and 'Run in Loop' actions. It also includes standard options
+        for minimizing or maximizing the widget.
+
+        Args:
+            event (QContextMenuEvent): The context menu event.
+        """
         context_menu = QMenu(self)
         
         # If running, the only option is to stop.

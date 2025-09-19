@@ -1,3 +1,9 @@
+"""
+Provides a dialog for editing Python code with syntax highlighting.
+
+This module contains the PythonScriptDialog, which embeds a QPlainTextEdit
+with a custom QSyntaxHighlighter for editing Python scripts within the application.
+"""
 import sys
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QPlainTextEdit, QDialogButtonBox)
 from PyQt6.QtCore import QRegularExpression
@@ -8,19 +14,35 @@ from pygments.lexers.python import PythonLexer
 from pygments.formatters.html import HtmlFormatter
 
 class PythonSyntaxHighlighter(QSyntaxHighlighter):
+    """
+    A syntax highlighter for Python code.
+
+    This class implements basic syntax highlighting for common Python keywords,
+    strings (single and double quoted), and comments. It applies different
+    character formats to these elements within a QPlainTextEdit document.
+    """
     def __init__(self, parent):
+        """
+        Initializes the PythonSyntaxHighlighter.
+
+        Args:
+            parent (QTextDocument): The document to which the highlighter is applied.
+        """
         super().__init__(parent)
         self.formatter = HtmlFormatter(style='monokai')
         self.lexer = PythonLexer()
 
     def highlightBlock(self, text):
-        # Use pygments to get HTML with inline styles
-        html = highlight(text, self.lexer, self.formatter)
+        """
+        Applies syntax highlighting to a block of text.
 
-        # This is a simplified approach. A more robust implementation would
-        # parse the HTML and apply formats. For now, we will just set a default
-        # color for the whole block. A proper implementation would be more complex.
+        This method is called by Qt whenever a block of text needs to be
+        redrawn. It uses regular expressions to find keywords, strings, and
+        comments and applies the corresponding formats.
 
+        Args:
+            text (str): The block of text to highlight.
+        """
         # A simple keyword highlighter
         keyword_format = QTextCharFormat()
         keyword_format.setForeground(QColor("#fc5e03"))
@@ -75,7 +97,22 @@ class PythonSyntaxHighlighter(QSyntaxHighlighter):
 
 
 class PythonScriptDialog(QDialog):
+    """
+    A dialog for editing a Python script.
+
+    This dialog provides a text editor with syntax highlighting for writing
+    and modifying Python scripts associated with a Python Script Node in the
+    sequencer.
+    """
     def __init__(self, parent=None, script=""):
+        """
+        Initializes the PythonScriptDialog.
+
+        Args:
+            parent (QWidget, optional): The parent widget. Defaults to None.
+            script (str, optional): The initial script text to load into the
+                                    editor. Defaults to "".
+        """
         super().__init__(parent)
         self.setWindowTitle("Python Script Node")
         self.resize(700, 500)
@@ -99,4 +136,10 @@ class PythonScriptDialog(QDialog):
         layout.addWidget(button_box)
 
     def get_script(self):
+        """
+        Retrieves the script text from the editor.
+
+        Returns:
+            str: The Python script as a string.
+        """
         return self.editor.toPlainText()

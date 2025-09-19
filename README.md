@@ -80,7 +80,3 @@ To create a standalone executable for distribution, this project uses PyInstalle
 ## License
 
 This project is currently not under a specific license. All rights are reserved.
-
-## Contact
-
-*Project Link:* [https://github.com/your_username/your_repository](https://github.com/your_username/your_repository)
