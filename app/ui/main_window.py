@@ -38,6 +38,7 @@ from app.ui.widgets.switch_widget import SwitchWidget
 from app.ui.widgets.input_widget import InputWidget
 from app.ui.widgets.button_widget import ButtonWidget
 from app.ui.widgets.plotter_widget import PlotterWidget
+from app.ui.global_variables_widget import GlobalVariablesWidget
 
 class ServerSettingsDialog(QDialog):
     """Dialog for configuring server connection settings."""
@@ -495,6 +496,7 @@ class MainWindow(QMainWindow):
     def _create_docks(self):
         self._create_server_tree_dock()
         self._create_sequence_tree_dock()
+        self._create_global_variables_dock()
         self._create_log_dock()
 
     def show_start_page(self):
@@ -505,6 +507,8 @@ class MainWindow(QMainWindow):
         self.title_bar.menu_bar.hide()
         self.server_tree_dock.hide()
         self.sequence_tree_dock.hide()
+        if hasattr(self, 'global_variables_dock'):
+            self.global_variables_dock.hide()
         self.log_dock.hide()
         self.start_page.populate_recent_projects(self.get_recent_projects())
         
@@ -523,6 +527,8 @@ class MainWindow(QMainWindow):
         self.title_bar.menu_bar.show()
         self.server_tree_dock.show()
         self.sequence_tree_dock.show()
+        if hasattr(self, 'global_variables_dock'):
+            self.global_variables_dock.show()
         self.log_dock.show()
         
         screen_geometry = QApplication.primaryScreen().availableGeometry()
@@ -551,6 +557,8 @@ class MainWindow(QMainWindow):
         
         # --- FEATURE: GLOBAL VARIABLES ---
         self.global_variables.clear()
+        if hasattr(self, 'global_variables_widget'):
+            self.global_variables_widget.load_variables()
         
         self.clear_all_pages()
         self.close_all_sequence_tabs()
@@ -617,6 +625,12 @@ class MainWindow(QMainWindow):
                 if server_url and not self.opcua_logic.is_connected:
                     logging.info(f"Project specifies server '{server_url}'. Connecting...")
                     self.toggle_connection()
+
+                # --- FEATURE: GLOBAL VARIABLES ---
+                self.global_variables = project_data.get('global_variables', {})
+                if hasattr(self, 'global_variables_widget'):
+                    self.global_variables_widget.load_variables()
+
             except Exception as e:
                 logging.error(f"Failed to load project file: {e}")
                 show_error_message("File Load Error", "The selected project file could not be loaded.", str(e))
@@ -650,11 +664,12 @@ class MainWindow(QMainWindow):
         
         open_tabs = list(self.open_sequence_editors.keys())
 
-        full_project_data = { 
-            'server_url': server_url, 
-            'dashboard': dashboard_data, 
+        full_project_data = {
+            'server_url': server_url,
+            'dashboard': dashboard_data,
             'sequences': self.sequences,
-            'open_tabs': open_tabs
+            'open_tabs': open_tabs,
+            'global_variables': self.global_variables
         }
         try:
             with open(file_path, 'w') as f:
@@ -913,9 +928,11 @@ class MainWindow(QMainWindow):
         
         self.server_tree_dock = QDockWidget("Server Browser", self)
         self.sequence_tree_dock = QDockWidget("Sequence Library", self)
+        self.global_variables_dock = QDockWidget("Global Variables", self)
         self.log_dock = QDockWidget("Log", self)
         view_menu.addAction(self.server_tree_dock.toggleViewAction())
         view_menu.addAction(self.sequence_tree_dock.toggleViewAction())
+        view_menu.addAction(self.global_variables_dock.toggleViewAction())
         view_menu.addAction(self.log_dock.toggleViewAction())
         
         view_menu.addSeparator()
@@ -1124,6 +1141,25 @@ class MainWindow(QMainWindow):
         self.sequence_tree.create_sequence_widget_requested.connect(self.on_create_sequence_widget_from_tree)
         self.sequence_tree_dock.setWidget(self.sequence_tree)
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.sequence_tree_dock)
+
+    def _create_global_variables_dock(self):
+        self.global_variables_dock.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
+        self.global_variables_widget = GlobalVariablesWidget(self)
+        # Connect the signal from the widget to a handler in the main window
+        self.global_variables_widget.variables_changed.connect(self.on_global_variables_changed)
+        self.global_variables_dock.setWidget(self.global_variables_widget)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.global_variables_dock)
+
+    def on_global_variables_changed(self):
+        """
+        Handles the signal emitted when global variables are changed.
+        This can be used to update any other UI elements that depend on them.
+        """
+        # For now, we can just log that the change was received.
+        # In the future, this could update combo boxes in node configs, etc.
+        logging.info("Global variables have been updated.")
+        self.set_project_dirty(True)
+
 
     def _create_page_controls(self):
         nav_layout = QHBoxLayout()
@@ -1677,7 +1713,7 @@ class MainWindow(QMainWindow):
         if name not in self.sequences:
             logging.error(f"Attempted to open non-existent sequence '{name}' in a tab.")
             return
-        editor = SequenceEditor(self)
+        editor = SequenceEditor(main_window=self, parent=self)
         editor.load_data(self.sequences[name])
         index = self.sequence_tab_widget.addTab(editor, name)
         self.sequence_tab_widget.setCurrentIndex(index)
