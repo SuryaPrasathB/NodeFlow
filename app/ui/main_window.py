@@ -502,6 +502,13 @@ class MainWindow(QMainWindow):
         self._create_log_dock()
         self.splitDockWidget(self.log_dock, self.global_variables_dock, Qt.Orientation.Horizontal)
 
+    def center_on_screen(self):
+        """Centers the window on the primary screen."""
+        screen_geometry = self.screen().availableGeometry()
+        x = (screen_geometry.width() - self.width()) // 2
+        y = (screen_geometry.height() - self.height()) // 2
+        self.move(screen_geometry.x() + x, screen_geometry.y() + y)
+
     def show_start_page(self):
         self.project_is_active = False
         self.is_project_dirty = False
@@ -516,15 +523,18 @@ class MainWindow(QMainWindow):
         self.start_page.populate_recent_projects(self.get_recent_projects())
         
         self.setFixedSize(800, 600)
-        screen_geometry = QApplication.primaryScreen().geometry()
-        x = (screen_geometry.width() - self.width()) / 2
-        y = (screen_geometry.height() - self.height()) / 2
-        self.move(int(x), int(y))
+        self.center_on_screen()
 
     def show_main_editor(self):
         """Switches the view to the main editor and configures the UI."""
         self.setMinimumSize(QSize(0, 0))
         self.setMaximumSize(QSize(16777215, 16777215))
+
+        settings = QSettings("MyCompany", "OPCUA-Client")
+        if settings.contains("windowSize"):
+            self.resize(settings.value("windowSize"))
+        else:
+            self.resize(1280, 720) # A reasonable default
 
         self.main_stack.setCurrentWidget(self.main_editor_widget)
         self.title_bar.menu_bar.show()
@@ -534,8 +544,7 @@ class MainWindow(QMainWindow):
             self.global_variables_dock.show()
         self.log_dock.show()
         
-        screen_geometry = QApplication.primaryScreen().availableGeometry()
-        self.setGeometry(screen_geometry)
+        self.center_on_screen()
 
     def add_to_recent_projects(self, file_path):
         settings = QSettings("MyCompany", "OPCUA-Client")
@@ -718,16 +727,14 @@ class MainWindow(QMainWindow):
         event.accept()
 
     def save_settings(self):
-        """Saves window geometry and state."""
+        """Saves window size and state."""
         settings = QSettings("MyCompany", "OPCUA-Client")
-        settings.setValue("geometry", self.saveGeometry())
+        settings.setValue("windowSize", self.size())
         settings.setValue("windowState", self.saveState())
 
     def load_settings(self):
-        """Loads window geometry and state."""
+        """Loads window state."""
         settings = QSettings("MyCompany", "OPCUA-Client")
-        if settings.contains("geometry"):
-            self.restoreGeometry(settings.value("geometry"))
         if settings.contains("windowState"):
             self.restoreState(settings.value("windowState"))
     
