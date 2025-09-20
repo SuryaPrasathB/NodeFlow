@@ -1343,16 +1343,11 @@ class SequenceEngine(QObject):
     async def execute_python_script_node(self, node_data):
         """
         Executes a 'Python Script' node.
-
-        The script is executed in a restricted scope with access to an 'INPUT'
-        variable. The script can set an 'output' variable, which is then
-        placed in the execution context.
-
-        Args:
-            node_data (dict): The data for the python script node.
-
-        Returns:
-            tuple: A tuple containing the script's output and a success boolean.
+        The script is executed in a sandboxed scope with access to:
+        - 'INPUT': The value from the data input socket.
+        - 'output': A variable to assign the node's result to.
+        - 'get_global(name)': A function to get a global variable's value.
+        - 'set_global(name, value)': A function to set a global variable's value.
         """
         try:
             config = node_data['config']
@@ -1361,33 +1356,37 @@ class SequenceEngine(QObject):
                 return None, True
 
             input_value = await self.resolve_argument_value(node_data, self.current_sequence_name)
-            
-            # The script operates on a copy of the global variables, with INPUT and output added.
-            script_globals = self.global_variables.copy()
 
-            # Unwrap any dictionary-like variables to their raw values for the script
-            for key, value in script_globals.items():
-                if isinstance(value, dict) and 'value' in value:
-                    script_globals[key] = value['value']
+            # --- New, safer execution scope ---
+            def get_global(name):
+                """Gets a value from the project's global variables."""
+                return self.global_variables.get(name)
 
-            script_globals['INPUT'] = input_value
-            script_globals['output'] = None
+            def set_global(name, value):
+                """Sets a value in the project's global variables."""
+                if name in ['__builtins__', 'INPUT', 'output', 'get_global', 'set_global']:
+                    raise NameError(f"'{name}' is a reserved name and cannot be set as a global variable.")
+                self.global_variables[name] = value
+                self.global_variable_changed.emit(name, value)
+                logging.info(f"Python script set global variable '{name}' to: {value}")
 
-            exec(script, script_globals)
+            script_scope = {
+                'INPUT': input_value,
+                'output': None,
+                'get_global': get_global,
+                'set_global': set_global
+            }
+            # --- End of new scope ---
 
-            # Changes to global variables made by the script are reflected back.
-            for key, value in script_globals.items():
-                if key not in ['__builtins__', 'INPUT']:
-                    if key not in self.global_variables or self.global_variables[key] != value:
-                        self.global_variables[key] = value
-                        self.global_variable_changed.emit(key, value)
+            exec(script, script_scope)
 
-            output_value = script_globals.get('output')
+            output_value = script_scope.get('output')
             self.execution_context[node_data['uuid']] = output_value
             logging.info(f"Python script node executed. Output: {output_value}")
             return output_value, True
         except Exception as e:
-            logging.error(f"Failed to execute Python script node: {e}")
+            import traceback
+            logging.error(f"Failed to execute Python script node '{node_data['config'].get('label', 'N/A')}': {e}\n{traceback.format_exc()}")
             return None, False
 
     async def execute_mysql_write_node(self, node_data):
@@ -3329,7 +3328,10 @@ class SequenceEditor(QGraphicsView):
             config['while_condition_value'] = "True"
         elif node_type == NodeType.PYTHON_SCRIPT:
             config['label'] = "Python Script"
-            config['script'] = "# INPUT is available as a variable\n# Set the output value using: output = ..."
+            config['script'] = ("# The input to the node is available as the 'INPUT' variable.\n"
+                              "# Set the output value using: output = ...\n"
+                              "# Use get_global('var_name') to read a global variable.\n"
+                              "# Use set_global('var_name', value) to write to a global variable.\n")
         elif node_type == NodeType.MYSQL_WRITE:
             config['label'] = "MySQL Write"
             config['table_name'] = "my_table"
