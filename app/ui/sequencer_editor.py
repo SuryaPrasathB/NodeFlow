@@ -1361,9 +1361,22 @@ class SequenceEngine(QObject):
                 return None, True
 
             input_value = await self.resolve_argument_value(node_data, self.current_sequence_name)
-            local_scope = {'INPUT': input_value, 'output': None}
-            exec(script, {}, local_scope)
-            output_value = local_scope.get('output')
+
+            # The script operates on a copy of the global variables, with INPUT and output added.
+            script_globals = self.global_variables.copy()
+            script_globals['INPUT'] = input_value
+            script_globals['output'] = None
+
+            exec(script, script_globals)
+
+            # Changes to global variables made by the script are reflected back.
+            for key, value in script_globals.items():
+                if key not in ['__builtins__', 'INPUT']:
+                    if key not in self.global_variables or self.global_variables[key] != value:
+                        self.global_variables[key] = value
+                        self.global_variable_changed.emit(key, value)
+
+            output_value = script_globals.get('output')
             self.execution_context[node_data['uuid']] = output_value
             logging.info(f"Python script node executed. Output: {output_value}")
             return output_value, True
