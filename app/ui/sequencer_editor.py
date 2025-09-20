@@ -32,6 +32,43 @@ from .python_script_dialog import PythonScriptDialog
 from app.core.mysql_manager import MySQLManager
 from PyQt6.QtCore import QSettings
 
+class VariableNodeDialog(QDialog):
+    """A dialog for configuring Set/Get Variable nodes."""
+    def __init__(self, parent=None, current_config=None, available_variables=None):
+        super().__init__(parent)
+        self.setWindowTitle("Configure Variable Node")
+        self.config = current_config or {}
+
+        layout = QVBoxLayout(self)
+        form_layout = QFormLayout()
+
+        self.variable_combo = QComboBox()
+        if available_variables:
+            self.variable_combo.addItems(available_variables)
+
+        form_layout.addRow("Variable Name:", self.variable_combo)
+        layout.addLayout(form_layout)
+
+        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
+
+        if self.config.get('variable_name'):
+            self.variable_combo.setCurrentText(self.config['variable_name'])
+
+    def get_config(self):
+        """Retrieves the updated configuration from the dialog."""
+        selected_variable = self.variable_combo.currentText()
+        if not selected_variable:
+            show_error_message("Configuration Error", "You must select a variable.")
+            return None
+
+        self.config['variable_name'] = selected_variable
+        node_type = self.config.get('node_type', 'Variable')
+        self.config['label'] = f"{node_type}: {selected_variable}"
+        return self.config
+
 class MySQLReadNodeDialog(QDialog):
     """A dialog for configuring the MySQL Read Node."""
     def __init__(self, parent=None, current_config=None):
@@ -618,25 +655,15 @@ class Connection(QGraphicsPathItem):
 class SequenceEngine(QObject):
     """
     The backend logic engine that executes a sequence graph.
-
     This class is decoupled from the UI and handles the step-by-step execution
     of a sequence. It emits signals to notify the UI about state changes,
     pauses, and completion.
-
-    Attributes:
-        execution_paused (pyqtSignal): Emitted when the execution pauses at a breakpoint.
-                                       Passes sequence_name (str) and node_uuid (str).
-        execution_finished (pyqtSignal): Emitted when a sequence completes or is stopped.
-                                         Passes sequence_name (str) and was_stopped (bool).
-        node_state_changed (pyqtSignal): Emitted when a node's visual state changes.
-                                         Passes sequence_name, node_uuid, and state (str).
-        connection_state_changed (pyqtSignal): Emitted when a connection's visual state changes.
-                                               Passes sequence_name, start_uuid, end_uuid, and state (str).
     """
     execution_paused = pyqtSignal(str, str)
     execution_finished = pyqtSignal(str, bool)
     node_state_changed = pyqtSignal(str, str, str)
     connection_state_changed = pyqtSignal(str, str, str, str)
+    global_variable_changed = pyqtSignal(str, object)
 
     def __init__(self, opcua_logic, async_runner, global_variables):
         """
@@ -695,6 +722,14 @@ class SequenceEngine(QObject):
             loop (bool, optional): If True, the sequence will loop indefinitely.
         """
         if self.debug_state != DebugState.IDLE: return
+
+        # --- Reset non-retentive variables to their initial values ---
+        for name, data in self.global_variables.items():
+            if not data.get('retentive'):
+                initial_value = data.get('initial_value')
+                if data.get('current_value') != initial_value:
+                    data['current_value'] = initial_value
+                    self.global_variable_changed.emit(name, initial_value)
 
         self.current_sequence_name = sequence_name
         self.is_looping = loop
@@ -1212,15 +1247,8 @@ class SequenceEngine(QObject):
     async def execute_set_variable_node(self, node_data):
         """
         Executes a 'Set Variable' node.
-
-        It resolves an input value and stores it in the shared `global_variables`
-        dictionary under a configured name.
-
-        Args:
-            node_data (dict): The data for the 'Set Variable' node.
-
-        Returns:
-            tuple: A tuple containing True and a success boolean.
+        It resolves an input value and updates the 'current_value' of a
+        variable in the shared `global_variables` dictionary.
         """
         try:
             config = node_data['config']
@@ -1228,9 +1256,27 @@ class SequenceEngine(QObject):
             if not variable_name:
                 raise ValueError("Variable name is not configured.")
 
+            if variable_name not in self.global_variables:
+                logging.error(f"Set Variable Node: Global variable '{variable_name}' does not exist.")
+                return None, False
+
             value_to_set = await self.resolve_argument_value(node_data, self.current_sequence_name)
-            self.global_variables[variable_name] = value_to_set
+
+            var_type = self.global_variables[variable_name].get('type', 'String')
+            try:
+                if var_type == "Integer":
+                    value_to_set = int(float(value_to_set))
+                elif var_type == "Float":
+                    value_to_set = float(value_to_set)
+                elif var_type == "Boolean":
+                    value_to_set = str(value_to_set).lower() in ['true', '1', 't', 'yes']
+            except (ValueError, TypeError) as e:
+                logging.error(f"Could not cast value '{value_to_set}' to type '{var_type}' for variable '{variable_name}': {e}")
+                return None, False
+
+            self.global_variables[variable_name]['current_value'] = value_to_set
             logging.info(f"Set global variable '{variable_name}' to: {value_to_set}")
+            self.global_variable_changed.emit(variable_name, value_to_set)
             return True, True
         except Exception as e:
             logging.error(f"Failed to execute Set Variable node: {e}")
@@ -1239,15 +1285,8 @@ class SequenceEngine(QObject):
     async def execute_get_variable_node(self, node_data):
         """
         Executes a 'Get Variable' node.
-
-        It retrieves a value from the shared `global_variables` dictionary
-        and places it in the execution context for other nodes to use.
-
-        Args:
-            node_data (dict): The data for the 'Get Variable' node.
-
-        Returns:
-            tuple: A tuple containing the retrieved value and a success boolean.
+        It retrieves the 'current_value' from the shared `global_variables`
+        dictionary and places it in the execution context.
         """
         try:
             config = node_data['config']
@@ -1255,9 +1294,12 @@ class SequenceEngine(QObject):
             if not variable_name:
                 raise ValueError("Variable name is not configured.")
 
-            value = self.global_variables.get(variable_name)
-            if value is None:
+            variable_data = self.global_variables.get(variable_name)
+            if variable_data is None:
                 logging.warning(f"Global variable '{variable_name}' not found. Returning None.")
+                value = None
+            else:
+                value = variable_data.get('current_value')
 
             self.execution_context[node_data['uuid']] = value
             logging.info(f"Retrieved global variable '{variable_name}'. Value: {value}")
@@ -1302,16 +1344,7 @@ class SequenceEngine(QObject):
     async def execute_python_script_node(self, node_data):
         """
         Executes a 'Python Script' node.
-
-        The script is executed in a restricted scope with access to an 'INPUT'
-        variable. The script can set an 'output' variable, which is then
-        placed in the execution context.
-
-        Args:
-            node_data (dict): The data for the python script node.
-
-        Returns:
-            tuple: A tuple containing the script's output and a success boolean.
+        The script can read/modify global variables, use an 'INPUT', and set an 'output'.
         """
         try:
             config = node_data['config']
@@ -1319,10 +1352,36 @@ class SequenceEngine(QObject):
             if not script:
                 return None, True
 
+            script_globals = {name: data.get('current_value') for name, data in self.global_variables.items()}
+
             input_value = await self.resolve_argument_value(node_data, self.current_sequence_name)
-            local_scope = {'INPUT': input_value, 'output': None}
-            exec(script, {}, local_scope)
-            output_value = local_scope.get('output')
+            script_globals['INPUT'] = input_value
+            script_globals['output'] = None
+
+            exec(script, {}, script_globals)
+
+            for name, value in script_globals.items():
+                if name in self.global_variables:
+                    if name in ['INPUT', 'output', '__builtins__']:
+                        continue
+
+                    original_value = self.global_variables[name].get('current_value')
+
+                    if original_value != value:
+                        var_type = self.global_variables[name].get('type', 'String')
+                        try:
+                            if var_type == "Integer": value = int(float(value))
+                            elif var_type == "Float": value = float(value)
+                            elif var_type == "Boolean": value = bool(value)
+                        except (ValueError, TypeError):
+                             logging.warning(f"Python script: Could not cast '{value}' back to type '{var_type}' for variable '{name}'. Change will be ignored.")
+                             continue
+
+                        self.global_variables[name]['current_value'] = value
+                        logging.info(f"Python script updated global variable '{name}' to: {value}")
+                        self.global_variable_changed.emit(name, value)
+
+            output_value = script_globals.get('output')
             self.execution_context[node_data['uuid']] = output_value
             logging.info(f"Python script node executed. Output: {output_value}")
             return output_value, True
@@ -1860,6 +1919,11 @@ class SequenceNode(QGraphicsObject):
             self.data_in_socket.setPos(self.width / 2, 0)
         elif node_type == NodeType.GET_VARIABLE.value:
             self.data_out_socket = DataSocket(self, is_output=True, label="Value")
+            self.data_out_socket.setPos(self.width / 2, self.height)
+        elif node_type == NodeType.PYTHON_SCRIPT.value:
+            self.data_in_socket = DataSocket(self, is_output=False, label="In")
+            self.data_in_socket.setPos(self.width / 2, 0)
+            self.data_out_socket = DataSocket(self, is_output=True, label="Out")
             self.data_out_socket.setPos(self.width / 2, self.height)
         elif node_type in [NodeType.FOR_LOOP.value, NodeType.WHILE_LOOP.value]:
              self.out_port.hide()
@@ -2819,13 +2883,17 @@ class SequenceScene(QGraphicsScene):
             elif node_type == NodeType.COMPUTE.value:
                 dialog = ComputeNodeDialog(self.views()[0], current_config=item.config)
             elif node_type == NodeType.SET_VARIABLE.value or node_type == NodeType.GET_VARIABLE.value:
-                var_name, ok = QInputDialog.getText(self.views()[0], f"Configure {node_type}", "Variable Name:", text=item.config.get('variable_name', ''))
-                if ok and var_name:
-                    item.config['variable_name'] = var_name
-                    item.config['label'] = f"{node_type}: {var_name}"
-                    item.update_title()
-                    self.scene_changed.emit()
-                return
+                if hasattr(self, 'main_window'):
+                    available_vars = list(self.main_window.global_variables.keys())
+                    dialog = VariableNodeDialog(self.views()[0], current_config=item.config, available_variables=available_vars)
+                else: # Fallback just in case
+                    var_name, ok = QInputDialog.getText(self.views()[0], f"Configure {node_type}", "Variable Name:", text=item.config.get('variable_name', ''))
+                    if ok and var_name:
+                        item.config['variable_name'] = var_name
+                        item.config['label'] = f"{node_type}: {var_name}"
+                        item.update_title()
+                        self.scene_changed.emit()
+                    return
             elif node_type == NodeType.RUN_SEQUENCE.value:
                 editor = self.views()[0]
                 dialog = RunSequenceDialog(editor, item.config, editor.available_sequences, editor.current_sequence)
@@ -2929,9 +2997,11 @@ class SequenceEditor(QGraphicsView):
     scene_changed = pyqtSignal()
 
     """The main view widget for the sequencer scene."""
-    def __init__(self, parent=None):
+    def __init__(self, *, main_window, parent=None):
         super().__init__(parent)
+        self.main_window = main_window
         self.scene = SequenceScene(self)
+        self.scene.main_window = main_window
         self.setScene(self.scene)
         self.scene.scene_changed.connect(self.scene_changed)
         self.scene.add_new_node_requested.connect(self.on_add_new_node)
