@@ -414,6 +414,8 @@ class MainWindow(QMainWindow):
         # Set the initial status on the title bar when the window is created.
         self.title_bar.set_connection_status(False)
 
+        self.load_settings()
+
     def _get_resize_edge(self, pos: QPoint):
         """Checks if a given position is within the resize border."""
         top = pos.y() < self.border_thickness
@@ -498,6 +500,14 @@ class MainWindow(QMainWindow):
         self._create_sequence_tree_dock()
         self._create_global_variables_dock()
         self._create_log_dock()
+        self.splitDockWidget(self.log_dock, self.global_variables_dock, Qt.Orientation.Horizontal)
+
+    def center_on_screen(self):
+        """Centers the window on the primary screen."""
+        screen_geometry = self.screen().availableGeometry()
+        x = (screen_geometry.width() - self.width()) // 2
+        y = (screen_geometry.height() - self.height()) // 2
+        self.move(screen_geometry.x() + x, screen_geometry.y() + y)
 
     def show_start_page(self):
         self.project_is_active = False
@@ -513,15 +523,18 @@ class MainWindow(QMainWindow):
         self.start_page.populate_recent_projects(self.get_recent_projects())
         
         self.setFixedSize(800, 600)
-        screen_geometry = QApplication.primaryScreen().geometry()
-        x = (screen_geometry.width() - self.width()) / 2
-        y = (screen_geometry.height() - self.height()) / 2
-        self.move(int(x), int(y))
+        self.center_on_screen()
 
     def show_main_editor(self):
         """Switches the view to the main editor and configures the UI."""
         self.setMinimumSize(QSize(0, 0))
         self.setMaximumSize(QSize(16777215, 16777215))
+
+        settings = QSettings("MyCompany", "OPCUA-Client")
+        if settings.contains("windowSize"):
+            self.resize(settings.value("windowSize"))
+        else:
+            self.resize(1280, 720) # A reasonable default
 
         self.main_stack.setCurrentWidget(self.main_editor_widget)
         self.title_bar.menu_bar.show()
@@ -531,8 +544,7 @@ class MainWindow(QMainWindow):
             self.global_variables_dock.show()
         self.log_dock.show()
         
-        screen_geometry = QApplication.primaryScreen().availableGeometry()
-        self.setGeometry(screen_geometry)
+        self.center_on_screen()
 
     def add_to_recent_projects(self, file_path):
         settings = QSettings("MyCompany", "OPCUA-Client")
@@ -704,6 +716,8 @@ class MainWindow(QMainWindow):
                 event.ignore()
                 return
 
+        self.save_settings()
+
         logging.info("Close event accepted. Shutting down application...")
         self.reconnect_timer.stop()
         for page in self.pages:
@@ -711,6 +725,18 @@ class MainWindow(QMainWindow):
                 widget.stop_subscription()
         self.async_runner.submit(self.shutdown())
         event.accept()
+
+    def save_settings(self):
+        """Saves window size and state."""
+        settings = QSettings("MyCompany", "OPCUA-Client")
+        settings.setValue("windowSize", self.size())
+        settings.setValue("windowState", self.saveState())
+
+    def load_settings(self):
+        """Loads window state."""
+        settings = QSettings("MyCompany", "OPCUA-Client")
+        if settings.contains("windowState"):
+            self.restoreState(settings.value("windowState"))
     
     def _create_dashboard_tab(self):
         self.dashboard_container = QWidget()
@@ -1128,7 +1154,7 @@ class MainWindow(QMainWindow):
         self.show_start_page()
 
     def _create_server_tree_dock(self):
-        self.server_tree_dock.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
+        self.server_tree_dock.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea | Qt.DockWidgetArea.BottomDockWidgetArea)
         self.server_tree = ServerTreeView(self.opcua_logic, self.async_runner)
         self.server_tree.create_widget_requested.connect(self.on_create_widget_from_tree)
         self.server_tree.add_to_sequencer_requested.connect(self.add_node_to_current_sequencer)
@@ -1136,14 +1162,14 @@ class MainWindow(QMainWindow):
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.server_tree_dock)
 
     def _create_sequence_tree_dock(self):
-        self.sequence_tree_dock.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
+        self.sequence_tree_dock.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea | Qt.DockWidgetArea.BottomDockWidgetArea)
         self.sequence_tree = SequenceTreeView()
         self.sequence_tree.create_sequence_widget_requested.connect(self.on_create_sequence_widget_from_tree)
         self.sequence_tree_dock.setWidget(self.sequence_tree)
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.sequence_tree_dock)
 
     def _create_global_variables_dock(self):
-        self.global_variables_dock.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
+        self.global_variables_dock.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea | Qt.DockWidgetArea.BottomDockWidgetArea)
         self.global_variables_widget = GlobalVariablesWidget(self)
         # Connect the signal from the widget to a handler in the main window
         self.global_variables_widget.variables_changed.connect(self.on_global_variables_changed)
