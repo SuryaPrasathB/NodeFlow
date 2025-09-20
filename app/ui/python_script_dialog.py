@@ -5,9 +5,10 @@ This module contains the PythonScriptDialog, which embeds a QPlainTextEdit
 with a custom QSyntaxHighlighter for editing Python scripts within the application.
 """
 import sys
-from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QPlainTextEdit, QDialogButtonBox)
+from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QPlainTextEdit, QDialogButtonBox, QPushButton)
 from PyQt6.QtCore import QRegularExpression
 from PyQt6.QtGui import QSyntaxHighlighter, QTextCharFormat, QColor, QFont
+from .error_dialog import show_error_message, show_info_message
 
 from pygments import highlight
 from pygments.lexers.python import PythonLexer
@@ -131,9 +132,26 @@ class PythonScriptDialog(QDialog):
         layout.addWidget(self.editor)
 
         button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+
+        # --- FEATURE: VERIFY SCRIPT ---
+        self.verify_button = QPushButton("Verify")
+        self.verify_button.clicked.connect(self.verify_script)
+        button_box.addButton(self.verify_button, QDialogButtonBox.ButtonRole.ActionRole)
+
         button_box.accepted.connect(self.accept)
         button_box.rejected.connect(self.reject)
         layout.addWidget(button_box)
+
+    def verify_script(self):
+        """
+        Verifies the syntax of the Python script in the editor.
+        """
+        script = self.get_script()
+        try:
+            compile(script, '<string>', 'exec')
+            show_info_message("Syntax OK", "The script syntax is valid.")
+        except SyntaxError as e:
+            show_error_message("Syntax Error", f"The script has a syntax error:\n\n{e}")
 
     def get_script(self):
         """
