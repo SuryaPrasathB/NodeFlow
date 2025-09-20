@@ -1544,6 +1544,7 @@ class MainWindow(QMainWindow):
         engine.node_state_changed.connect(self.on_node_state_changed)
         engine.connection_state_changed.connect(self.on_connection_state_changed)
         engine.execution_paused.connect(self.on_sequence_paused)
+        engine.global_variable_changed.connect(self.on_global_variable_updated)
 
         self.running_sequences[name] = engine
         
@@ -1668,6 +1669,14 @@ class MainWindow(QMainWindow):
         editor = self.open_sequence_editors.get(sequence_name)
         if editor:
             editor.update_connection_state(start_uuid, end_uuid, state)
+
+    def on_global_variable_updated(self, name, value):
+        """
+        Slot to handle updates to a global variable's value from the engine.
+        Updates the 'Current Value' in the GlobalVariablesWidget.
+        """
+        if hasattr(self, 'global_variables_widget'):
+            self.global_variables_widget.update_variable_display(name, value)
 
     def open_server_settings_dialog(self):
         dialog = ServerSettingsDialog(self)
