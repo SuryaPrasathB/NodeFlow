@@ -1669,8 +1669,7 @@ class DataConnection(QGraphicsPathItem):
     """
     A visual data connection between two DataSockets.
 
-    The path is drawn with right-angled segments that can be dragged to
-    customize the layout.
+    The path is drawn as a smooth Bezier curve.
     """
     def __init__(self, start_socket, end_socket, scene, uuid_str=None):
         """
@@ -1694,13 +1693,6 @@ class DataConnection(QGraphicsPathItem):
         self.start_socket.connections.append(self)
         if self.end_socket:
             self.end_socket.connections.append(self)
-
-        # --- NEW: Relative offsets for control points ---
-        self.h_control_y1_offset = 20.0
-        self.h_control_y2_offset = -20.0
-        self.v_control_x_offset = 0.0
-
-        self.drag_handle = None # Can be 'v_handle', 'h1_handle', or 'h2_handle'
 
         self.update_path()
 
@@ -1727,7 +1719,7 @@ class DataConnection(QGraphicsPathItem):
 
     def paint(self, painter, option, widget=None):
         """
-        Paints the connection path and its drag handles when selected.
+        Paints the connection path.
 
         Args:
             painter (QPainter): The painter to use for drawing.
@@ -1742,116 +1734,20 @@ class DataConnection(QGraphicsPathItem):
         painter.setPen(pen)
         painter.drawPath(self.path())
 
-        # Draw handles if selected
-        if self.isSelected():
-            painter.setBrush(QBrush(QColor("#00aaff")))
-            painter.setPen(QPen(Qt.GlobalColor.white))
-
-            handles = self.get_handle_positions()
-            for handle_pos in handles.values():
-                if handle_pos:
-                    painter.drawRoundedRect(QRectF(handle_pos.x() - 4, handle_pos.y() - 4, 8, 8), 2, 2)
-
-    def get_handle_positions(self):
-        """
-        Calculates the screen positions for the draggable segment handles.
-
-        Returns:
-            dict[str, QPointF]: A dictionary mapping handle names to their positions.
-        """
-        start_pos = self.start_socket.scenePos()
-        end_pos = self.end_socket.scenePos() if self.end_socket else self._scene.mouse_move_pos
-
-        # Calculate absolute control points from offsets
-        v_control_x = (start_pos.x() + end_pos.x()) / 2 + self.v_control_x_offset
-        h_control_y1 = start_pos.y() + self.h_control_y1_offset
-        h_control_y2 = end_pos.y() + self.h_control_y2_offset
-
-        h1_handle_pos = QPointF((v_control_x + start_pos.x()) / 2, h_control_y1)
-        v_handle_pos = QPointF(v_control_x, (h_control_y1 + h_control_y2)/2)
-        h2_handle_pos = QPointF((v_control_x + end_pos.x()) / 2, h_control_y2)
-
-        return {'h1': h1_handle_pos, 'v': v_handle_pos, 'h2': h2_handle_pos}
-
     def update_path(self):
-        """Recalculates and sets the multi-segment path for the connection."""
+        """Recalculates and sets the smooth Bezier path for the connection."""
         path = QPainterPath()
         start_pos = self.start_socket.scenePos()
         end_pos = self.end_socket.scenePos() if self.end_socket else self._scene.mouse_move_pos
-
-        # Calculate absolute control points from offsets
-        v_control_x = (start_pos.x() + end_pos.x()) / 2 + self.v_control_x_offset
-        h_control_y1 = start_pos.y() + self.h_control_y1_offset
-        h_control_y2 = end_pos.y() + self.h_control_y2_offset
-
-        # Create a 5-segment path
-        p1 = QPointF(start_pos.x(), h_control_y1)
-        p2 = QPointF(v_control_x, h_control_y1)
-        p3 = QPointF(v_control_x, h_control_y2)
-        p4 = QPointF(end_pos.x(), h_control_y2)
-
         path.moveTo(start_pos)
-        path.lineTo(p1)
-        path.lineTo(p2)
-        path.lineTo(p3)
-        path.lineTo(p4)
-        path.lineTo(end_pos)
-
+        
+        # Control points for the Bezier curve
+        offset_y = 60.0
+        ctrl1 = QPointF(start_pos.x(), start_pos.y() + offset_y)
+        ctrl2 = QPointF(end_pos.x(), end_pos.y() - offset_y)
+        path.cubicTo(ctrl1, ctrl2, end_pos)
+        
         self.setPath(path)
-
-    def mousePressEvent(self, event):
-        """
-        Handles mouse press events to select the connection or grab a drag handle.
-
-        Args:
-            event (QGraphicsSceneMouseEvent): The mouse press event.
-        """
-        super().mousePressEvent(event)
-        self.drag_handle = None
-        if self.isSelected():
-            pos = event.pos()
-            handles = self.get_handle_positions()
-
-            # Check handles in order of appearance
-            if (pos - handles['h1']).manhattanLength() < 10:
-                self.drag_handle = 'h1_handle'
-            elif (pos - handles['v']).manhattanLength() < 10:
-                 self.drag_handle = 'v_handle'
-            elif (pos - handles['h2']).manhattanLength() < 10:
-                 self.drag_handle = 'h2_handle'
-
-    def mouseMoveEvent(self, event):
-        """
-        Handles mouse move events to move a dragged handle.
-
-        Args:
-            event (QGraphicsSceneMouseEvent): The mouse move event.
-        """
-        if self.drag_handle == 'h1_handle':
-            start_pos = self.start_socket.scenePos()
-            self.h_control_y1_offset = event.pos().y() - start_pos.y()
-            self.update_path()
-        elif self.drag_handle == 'v_handle':
-            start_pos = self.start_socket.scenePos()
-            end_pos = self.end_socket.scenePos() if self.end_socket else self._scene.mouse_move_pos
-            self.v_control_x_offset = event.pos().x() - (start_pos.x() + end_pos.x()) / 2
-            self.update_path()
-        elif self.drag_handle == 'h2_handle':
-            end_pos = self.end_socket.scenePos() if self.end_socket else self._scene.mouse_move_pos
-            self.h_control_y2_offset = event.pos().y() - end_pos.y()
-            self.update_path()
-        else:
-            super().mouseMoveEvent(event)
-
-    def mouseReleaseEvent(self, event):
-        """
-        Handles mouse release events to stop dragging a handle.
-
-        Args:
-            event (QGraphicsSceneMouseEvent): The mouse release event.
-        """
-        self.drag_handle = None
-        super().mouseReleaseEvent(event)
 
     def destroy(self):
         """Removes the connection from its sockets and the scene."""
@@ -1874,9 +1770,6 @@ class DataConnection(QGraphicsPathItem):
             'uuid': self.uuid,
             'start_node_uuid': self.start_socket.parentItem().uuid,
             'end_node_uuid': self.end_socket.parentItem().uuid,
-            'h_control_y1_offset': self.h_control_y1_offset,
-            'h_control_y2_offset': self.h_control_y2_offset,
-            'v_control_x_offset': self.v_control_x_offset,
             'end_socket_label': self.end_socket.label if hasattr(self.end_socket, 'label') else None
         }
 
@@ -2484,9 +2377,6 @@ class DeleteItemsCommand(QUndoCommand):
                     data['end_socket_label'] = item.end_socket.label if hasattr(item.end_socket, 'label') else None
                 else:
                     data['end_socket_label'] = None
-                data['h_control_y1'] = item.h_control_y1
-                data['h_control_y2'] = item.h_control_y2
-                data['v_control_x'] = item.v_control_x
 
             # Only add items that could be serialized
             if 'type' in data:
@@ -2534,7 +2424,7 @@ class DeleteItemsCommand(QUndoCommand):
                         conn.set_condition(data['condition'])
                     self.scene.addItem(conn)
                     data['item'] = conn
-            elif isinstance(item, DataConnection):
+            elif data['type'] == 'data_connection':
                 start_node = nodes_map.get(data['start_uuid'])
                 end_node = nodes_map.get(data['end_uuid'])
                 if start_node and end_node:
@@ -2548,9 +2438,6 @@ class DeleteItemsCommand(QUndoCommand):
 
                     if start_node.data_out_socket and end_socket:
                         conn = DataConnection(start_node.data_out_socket, end_socket, self.scene, data.get('uuid'))
-                        conn.h_control_y1 = data.get('h_control_y1')
-                        conn.h_control_y2 = data.get('h_control_y2')
-                        conn.v_control_x = data.get('v_control_x')
                         conn.update_path()
                         self.scene.addItem(conn)
                         data['item'] = conn
@@ -3475,9 +3362,5 @@ class SequenceEditor(QGraphicsView):
 
                     if start_node.data_out_socket and end_socket:
                         connection = DataConnection(start_node.data_out_socket, end_socket, self.scene, conn_data.get('uuid'))
-                        # Load control point offsets, providing defaults for older save files
-                        connection.h_control_y1_offset = conn_data.get('h_control_y1_offset', 20.0)
-                        connection.h_control_y2_offset = conn_data.get('h_control_y2_offset', -20.0)
-                        connection.v_control_x_offset = conn_data.get('v_control_x_offset', 0.0)
                         connection.update_path()
                         self.scene.addItem(connection)
