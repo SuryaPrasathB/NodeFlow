@@ -500,6 +500,7 @@ class MainWindow(QMainWindow):
         self._create_sequence_tree_dock()
         self._create_global_variables_dock()
         self._create_log_dock()
+        self.splitDockWidget(self.log_dock, self.global_variables_dock, Qt.Orientation.Horizontal)
 
     def show_start_page(self):
         self.project_is_active = False
