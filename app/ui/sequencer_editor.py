@@ -1257,15 +1257,14 @@ class SequenceEngine(QObject):
                 raise ValueError("Variable name is not configured.")
 
             if variable_name not in self.global_variables:
-                logging.error(f"Set Variable Node: Global variable '{variable_name}' does not exist.")
+                logging.error(f"Set Variable Node: Global variable '{variable_name}' does not exist and must be declared first.")
                 return None, False
 
             value_to_set = await self.resolve_argument_value(node_data, self.current_sequence_name)
-
             var_type = self.global_variables[variable_name].get('type', 'String')
             try:
                 if var_type == "Integer":
-                    value_to_set = int(float(value_to_set))
+                    value_to_set = int(float(value_to_set)) # float first to handle "1.0"
                 elif var_type == "Float":
                     value_to_set = float(value_to_set)
                 elif var_type == "Boolean":
@@ -1287,6 +1286,7 @@ class SequenceEngine(QObject):
         Executes a 'Get Variable' node.
         It retrieves the 'current_value' from the shared `global_variables`
         dictionary and places it in the execution context.
+
         """
         try:
             config = node_data['config']
@@ -1300,7 +1300,7 @@ class SequenceEngine(QObject):
                 value = None
             else:
                 value = variable_data.get('current_value')
-
+                
             self.execution_context[node_data['uuid']] = value
             logging.info(f"Retrieved global variable '{variable_name}'. Value: {value}")
             return value, True
@@ -1353,7 +1353,6 @@ class SequenceEngine(QObject):
                 return None, True
 
             script_globals = {name: data.get('current_value') for name, data in self.global_variables.items()}
-
             input_value = await self.resolve_argument_value(node_data, self.current_sequence_name)
             script_globals['INPUT'] = input_value
             script_globals['output'] = None

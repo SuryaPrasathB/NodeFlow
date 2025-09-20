@@ -20,6 +20,14 @@ class GlobalVariablesWidget(QWidget):
     variables_changed = pyqtSignal()
 
     def __init__(self, main_window, parent=None):
+        """
+        Initializes the GlobalVariablesWidget.
+
+        Args:
+            main_window (MainWindow): A reference to the main application window,
+                                    which holds the global_variables dictionary.
+            parent (QWidget, optional): The parent widget. Defaults to None.
+        """
         super().__init__(parent)
         self.main_window = main_window
         self.data_types = ["String", "Integer", "Float", "Boolean"]
@@ -84,11 +92,21 @@ class GlobalVariablesWidget(QWidget):
             self.update_global_variables()
 
     def on_item_changed(self, item):
-        """Handles changes to editable items in the table (Name or Initial Value)."""
+        """
+        Handles changes to editable items in the table (Name or Initial Value).
+
+        Args:
+            item (QTableWidgetItem): The item that was changed.
+        """
         self.update_global_variables()
 
     def on_cell_widget_changed(self, index):
-        """Handles changes to cell widgets (Type ComboBox or Retentive CheckBox)."""
+        """
+        Handles changes to cell widgets (Type ComboBox or Retentive CheckBox).
+
+        Args:
+            index (int): The new index or state, depending on the widget.
+        """
         self.update_global_variables()
 
     def update_global_variables(self):
@@ -139,7 +157,16 @@ class GlobalVariablesWidget(QWidget):
         logging.debug(f"Global variables updated: {self.main_window.global_variables}")
 
     def cast_value(self, value_str, type_str):
-        """Casts a string value to the specified data type."""
+        """
+        Casts a string value to the specified data type.
+
+        Args:
+            value_str (str): The string representation of the value.
+            type_str (str): The target data type.
+
+        Returns:
+            The value cast to the appropriate type.
+        """
         try:
             if type_str == "Integer":
                 return int(float(value_str)) # Handle "1.0"
