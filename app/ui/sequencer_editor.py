@@ -655,15 +655,25 @@ class Connection(QGraphicsPathItem):
 class SequenceEngine(QObject):
     """
     The backend logic engine that executes a sequence graph.
+
     This class is decoupled from the UI and handles the step-by-step execution
     of a sequence. It emits signals to notify the UI about state changes,
     pauses, and completion.
+
+    Attributes:
+        execution_paused (pyqtSignal): Emitted when the execution pauses at a breakpoint.
+                                       Passes sequence_name (str) and node_uuid (str).
+        execution_finished (pyqtSignal): Emitted when a sequence completes or is stopped.
+                                         Passes sequence_name (str) and was_stopped (bool).
+        node_state_changed (pyqtSignal): Emitted when a node's visual state changes.
+                                         Passes sequence_name, node_uuid, and state (str).
+        connection_state_changed (pyqtSignal): Emitted when a connection's visual state changes.
+                                               Passes sequence_name, start_uuid, end_uuid, and state (str).
     """
     execution_paused = pyqtSignal(str, str)
     execution_finished = pyqtSignal(str, bool)
     node_state_changed = pyqtSignal(str, str, str)
     connection_state_changed = pyqtSignal(str, str, str, str)
-    global_variable_changed = pyqtSignal(str, object)
 
     def __init__(self, opcua_logic, async_runner, global_variables):
         """
@@ -722,14 +732,6 @@ class SequenceEngine(QObject):
             loop (bool, optional): If True, the sequence will loop indefinitely.
         """
         if self.debug_state != DebugState.IDLE: return
-
-        # --- Reset non-retentive variables to their initial values ---
-        for name, data in self.global_variables.items():
-            if not data.get('retentive'):
-                initial_value = data.get('initial_value')
-                if data.get('current_value') != initial_value:
-                    data['current_value'] = initial_value
-                    self.global_variable_changed.emit(name, initial_value)
 
         self.current_sequence_name = sequence_name
         self.is_looping = loop
@@ -923,7 +925,9 @@ class SequenceEngine(QObject):
                         return None, False
 
             logging.info(f"Evaluating expression: '{expression}' with inputs: {local_vars}")
-            result = eval(expression, {"__builtins__": None}, local_vars)
+            # Extract the 'value' from each input dictionary if it's a dict, otherwise use the value directly
+            eval_vars = {k: v['value'] if isinstance(v, dict) and 'value' in v else v for k, v in local_vars.items()}
+            result = eval(expression, {"__builtins__": None}, eval_vars)
             logging.info(f"Expression result: {result}")
             self.execution_context[node_data['uuid']] = result
             return result, True
@@ -1247,8 +1251,15 @@ class SequenceEngine(QObject):
     async def execute_set_variable_node(self, node_data):
         """
         Executes a 'Set Variable' node.
-        It resolves an input value and updates the 'current_value' of a
-        variable in the shared `global_variables` dictionary.
+
+        It resolves an input value and stores it in the shared `global_variables`
+        dictionary under a configured name.
+
+        Args:
+            node_data (dict): The data for the 'Set Variable' node.
+
+        Returns:
+            tuple: A tuple containing True and a success boolean.
         """
         try:
             config = node_data['config']
@@ -1256,26 +1267,9 @@ class SequenceEngine(QObject):
             if not variable_name:
                 raise ValueError("Variable name is not configured.")
 
-            if variable_name not in self.global_variables:
-                logging.error(f"Set Variable Node: Global variable '{variable_name}' does not exist and must be declared first.")
-                return None, False
-
             value_to_set = await self.resolve_argument_value(node_data, self.current_sequence_name)
-            var_type = self.global_variables[variable_name].get('type', 'String')
-            try:
-                if var_type == "Integer":
-                    value_to_set = int(float(value_to_set)) # float first to handle "1.0"
-                elif var_type == "Float":
-                    value_to_set = float(value_to_set)
-                elif var_type == "Boolean":
-                    value_to_set = str(value_to_set).lower() in ['true', '1', 't', 'yes']
-            except (ValueError, TypeError) as e:
-                logging.error(f"Could not cast value '{value_to_set}' to type '{var_type}' for variable '{variable_name}': {e}")
-                return None, False
-
-            self.global_variables[variable_name]['current_value'] = value_to_set
+            self.global_variables[variable_name] = value_to_set
             logging.info(f"Set global variable '{variable_name}' to: {value_to_set}")
-            self.global_variable_changed.emit(variable_name, value_to_set)
             return True, True
         except Exception as e:
             logging.error(f"Failed to execute Set Variable node: {e}")
@@ -1284,9 +1278,15 @@ class SequenceEngine(QObject):
     async def execute_get_variable_node(self, node_data):
         """
         Executes a 'Get Variable' node.
-        It retrieves the 'current_value' from the shared `global_variables`
-        dictionary and places it in the execution context.
 
+        It retrieves a value from the shared `global_variables` dictionary
+        and places it in the execution context for other nodes to use.
+
+        Args:
+            node_data (dict): The data for the 'Get Variable' node.
+
+        Returns:
+            tuple: A tuple containing the retrieved value and a success boolean.
         """
         try:
             config = node_data['config']
@@ -1294,13 +1294,10 @@ class SequenceEngine(QObject):
             if not variable_name:
                 raise ValueError("Variable name is not configured.")
 
-            variable_data = self.global_variables.get(variable_name)
-            if variable_data is None:
+            value = self.global_variables.get(variable_name)
+            if value is None:
                 logging.warning(f"Global variable '{variable_name}' not found. Returning None.")
-                value = None
-            else:
-                value = variable_data.get('current_value')
-                
+
             self.execution_context[node_data['uuid']] = value
             logging.info(f"Retrieved global variable '{variable_name}'. Value: {value}")
             return value, True
@@ -1344,7 +1341,16 @@ class SequenceEngine(QObject):
     async def execute_python_script_node(self, node_data):
         """
         Executes a 'Python Script' node.
-        The script can read/modify global variables, use an 'INPUT', and set an 'output'.
+
+        The script is executed in a restricted scope with access to an 'INPUT'
+        variable. The script can set an 'output' variable, which is then
+        placed in the execution context.
+
+        Args:
+            node_data (dict): The data for the python script node.
+
+        Returns:
+            tuple: A tuple containing the script's output and a success boolean.
         """
         try:
             config = node_data['config']
@@ -1352,35 +1358,10 @@ class SequenceEngine(QObject):
             if not script:
                 return None, True
 
-            script_globals = {name: data.get('current_value') for name, data in self.global_variables.items()}
             input_value = await self.resolve_argument_value(node_data, self.current_sequence_name)
-            script_globals['INPUT'] = input_value
-            script_globals['output'] = None
-
-            exec(script, {}, script_globals)
-
-            for name, value in script_globals.items():
-                if name in self.global_variables:
-                    if name in ['INPUT', 'output', '__builtins__']:
-                        continue
-
-                    original_value = self.global_variables[name].get('current_value')
-
-                    if original_value != value:
-                        var_type = self.global_variables[name].get('type', 'String')
-                        try:
-                            if var_type == "Integer": value = int(float(value))
-                            elif var_type == "Float": value = float(value)
-                            elif var_type == "Boolean": value = bool(value)
-                        except (ValueError, TypeError):
-                             logging.warning(f"Python script: Could not cast '{value}' back to type '{var_type}' for variable '{name}'. Change will be ignored.")
-                             continue
-
-                        self.global_variables[name]['current_value'] = value
-                        logging.info(f"Python script updated global variable '{name}' to: {value}")
-                        self.global_variable_changed.emit(name, value)
-
-            output_value = script_globals.get('output')
+            local_scope = {'INPUT': input_value, 'output': None}
+            exec(script, {}, local_scope)
+            output_value = local_scope.get('output')
             self.execution_context[node_data['uuid']] = output_value
             logging.info(f"Python script node executed. Output: {output_value}")
             return output_value, True
@@ -1797,7 +1778,6 @@ class DataConnection(QGraphicsPathItem):
         path = QPainterPath()
         start_pos = self.start_socket.scenePos()
         end_pos = self.end_socket.scenePos() if self.end_socket else self._scene.mouse_move_pos
-        path.moveTo(start_pos)
         
         # Control points for the Bezier curve
         offset_y = 60.0
@@ -1919,11 +1899,6 @@ class SequenceNode(QGraphicsObject):
         elif node_type == NodeType.GET_VARIABLE.value:
             self.data_out_socket = DataSocket(self, is_output=True, label="Value")
             self.data_out_socket.setPos(self.width / 2, self.height)
-        elif node_type == NodeType.PYTHON_SCRIPT.value:
-            self.data_in_socket = DataSocket(self, is_output=False, label="In")
-            self.data_in_socket.setPos(self.width / 2, 0)
-            self.data_out_socket = DataSocket(self, is_output=True, label="Out")
-            self.data_out_socket.setPos(self.width / 2, self.height)
         elif node_type in [NodeType.FOR_LOOP.value, NodeType.WHILE_LOOP.value]:
              self.out_port.hide()
         elif node_type == NodeType.MYSQL_WRITE.value:
@@ -1934,14 +1909,6 @@ class SequenceNode(QGraphicsObject):
                 # Distribute sockets along the top edge
                 socket.setPos(self.width * (i + 1) / (num_inputs + 1), 0)
                 self.data_in_sockets[input_name] = socket
-        elif node_type == NodeType.COMPUTE.value:
-            # Re-create the standard 'A', 'B', 'C' sockets
-            self.data_in_sockets['A'] = DataSocket(self, is_output=False, label='A')
-            self.data_in_sockets['A'].setPos(self.width * 0.25, 0)
-            self.data_in_sockets['B'] = DataSocket(self, is_output=False, label='B')
-            self.data_in_sockets['B'].setPos(self.width * 0.50, 0)
-            self.data_in_sockets['C'] = DataSocket(self, is_output=False, label='C')
-            self.data_in_sockets['C'].setPos(self.width * 0.75, 0)
         elif node_type == NodeType.MYSQL_READ.value:
             self.data_out_socket = DataSocket(self, is_output=True, label="Out")
             self.data_out_socket.setPos(self.width / 2, self.height)
@@ -2104,6 +2071,14 @@ class SequenceNode(QGraphicsObject):
                 # Distribute sockets along the top edge
                 socket.setPos(self.width * (i + 1) / (num_inputs + 1), 0)
                 self.data_in_sockets[input_name] = socket
+        elif node_type == NodeType.COMPUTE.value:
+            # Re-create the standard 'A', 'B', 'C' sockets
+            self.data_in_sockets['A'] = DataSocket(self, is_output=False, label='A')
+            self.data_in_sockets['A'].setPos(self.width * 0.25, 0)
+            self.data_in_sockets['B'] = DataSocket(self, is_output=False, label='B')
+            self.data_in_sockets['B'].setPos(self.width * 0.50, 0)
+            self.data_in_sockets['C'] = DataSocket(self, is_output=False, label='C')
+            self.data_in_sockets['C'].setPos(self.width * 0.75, 0)
 
     def serialize(self):
         """
