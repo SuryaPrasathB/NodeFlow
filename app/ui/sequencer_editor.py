@@ -674,6 +674,7 @@ class SequenceEngine(QObject):
     execution_finished = pyqtSignal(str, bool)
     node_state_changed = pyqtSignal(str, str, str)
     connection_state_changed = pyqtSignal(str, str, str, str)
+    global_variable_changed = pyqtSignal(str, object)
 
     def __init__(self, opcua_logic, async_runner, global_variables):
         """
@@ -1269,6 +1270,7 @@ class SequenceEngine(QObject):
 
             value_to_set = await self.resolve_argument_value(node_data, self.current_sequence_name)
             self.global_variables[variable_name] = value_to_set
+            self.global_variable_changed.emit(variable_name, value_to_set)
             logging.info(f"Set global variable '{variable_name}' to: {value_to_set}")
             return True, True
         except Exception as e:
@@ -1778,6 +1780,7 @@ class DataConnection(QGraphicsPathItem):
         path = QPainterPath()
         start_pos = self.start_socket.scenePos()
         end_pos = self.end_socket.scenePos() if self.end_socket else self._scene.mouse_move_pos
+        path.moveTo(start_pos)
         
         # Control points for the Bezier curve
         offset_y = 60.0
@@ -1910,6 +1913,11 @@ class SequenceNode(QGraphicsObject):
                 socket.setPos(self.width * (i + 1) / (num_inputs + 1), 0)
                 self.data_in_sockets[input_name] = socket
         elif node_type == NodeType.MYSQL_READ.value:
+            self.data_out_socket = DataSocket(self, is_output=True, label="Out")
+            self.data_out_socket.setPos(self.width / 2, self.height)
+        elif node_type == NodeType.PYTHON_SCRIPT.value:
+            self.data_in_socket = DataSocket(self, is_output=False, label="In")
+            self.data_in_socket.setPos(self.width / 2, 0)
             self.data_out_socket = DataSocket(self, is_output=True, label="Out")
             self.data_out_socket.setPos(self.width / 2, self.height)
 
