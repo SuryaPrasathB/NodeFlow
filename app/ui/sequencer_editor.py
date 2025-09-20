@@ -1361,9 +1361,15 @@ class SequenceEngine(QObject):
                 return None, True
 
             input_value = await self.resolve_argument_value(node_data, self.current_sequence_name)
-
+            
             # The script operates on a copy of the global variables, with INPUT and output added.
             script_globals = self.global_variables.copy()
+
+            # Unwrap any dictionary-like variables to their raw values for the script
+            for key, value in script_globals.items():
+                if isinstance(value, dict) and 'value' in value:
+                    script_globals[key] = value['value']
+
             script_globals['INPUT'] = input_value
             script_globals['output'] = None
 

@@ -132,7 +132,7 @@ class PythonScriptDialog(QDialog):
         layout.addWidget(self.editor)
 
         button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
-
+        
         # --- FEATURE: VERIFY SCRIPT ---
         self.verify_button = QPushButton("Verify")
         self.verify_button.clicked.connect(self.verify_script)
