@@ -32,6 +32,43 @@ from .python_script_dialog import PythonScriptDialog
 from app.core.mysql_manager import MySQLManager
 from PyQt6.QtCore import QSettings
 
+class VariableNodeDialog(QDialog):
+    """A dialog for configuring Set/Get Variable nodes."""
+    def __init__(self, parent=None, current_config=None, available_variables=None):
+        super().__init__(parent)
+        self.setWindowTitle("Configure Variable Node")
+        self.config = current_config or {}
+
+        layout = QVBoxLayout(self)
+        form_layout = QFormLayout()
+
+        self.variable_combo = QComboBox()
+        if available_variables:
+            self.variable_combo.addItems(available_variables)
+
+        form_layout.addRow("Variable Name:", self.variable_combo)
+        layout.addLayout(form_layout)
+
+        button_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        button_box.accepted.connect(self.accept)
+        button_box.rejected.connect(self.reject)
+        layout.addWidget(button_box)
+
+        if self.config.get('variable_name'):
+            self.variable_combo.setCurrentText(self.config['variable_name'])
+
+    def get_config(self):
+        """Retrieves the updated configuration from the dialog."""
+        selected_variable = self.variable_combo.currentText()
+        if not selected_variable:
+            show_error_message("Configuration Error", "You must select a variable.")
+            return None
+
+        self.config['variable_name'] = selected_variable
+        node_type = self.config.get('node_type', 'Variable')
+        self.config['label'] = f"{node_type}: {selected_variable}"
+        return self.config
+
 class MySQLReadNodeDialog(QDialog):
     """A dialog for configuring the MySQL Read Node."""
     def __init__(self, parent=None, current_config=None):
@@ -2819,13 +2856,17 @@ class SequenceScene(QGraphicsScene):
             elif node_type == NodeType.COMPUTE.value:
                 dialog = ComputeNodeDialog(self.views()[0], current_config=item.config)
             elif node_type == NodeType.SET_VARIABLE.value or node_type == NodeType.GET_VARIABLE.value:
-                var_name, ok = QInputDialog.getText(self.views()[0], f"Configure {node_type}", "Variable Name:", text=item.config.get('variable_name', ''))
-                if ok and var_name:
-                    item.config['variable_name'] = var_name
-                    item.config['label'] = f"{node_type}: {var_name}"
-                    item.update_title()
-                    self.scene_changed.emit()
-                return
+                if hasattr(self, 'main_window'):
+                    available_vars = list(self.main_window.global_variables.keys())
+                    dialog = VariableNodeDialog(self.views()[0], current_config=item.config, available_variables=available_vars)
+                else: # Fallback just in case
+                    var_name, ok = QInputDialog.getText(self.views()[0], f"Configure {node_type}", "Variable Name:", text=item.config.get('variable_name', ''))
+                    if ok and var_name:
+                        item.config['variable_name'] = var_name
+                        item.config['label'] = f"{node_type}: {var_name}"
+                        item.update_title()
+                        self.scene_changed.emit()
+                    return
             elif node_type == NodeType.RUN_SEQUENCE.value:
                 editor = self.views()[0]
                 dialog = RunSequenceDialog(editor, item.config, editor.available_sequences, editor.current_sequence)
@@ -2929,9 +2970,11 @@ class SequenceEditor(QGraphicsView):
     scene_changed = pyqtSignal()
 
     """The main view widget for the sequencer scene."""
-    def __init__(self, parent=None):
+    def __init__(self, *, main_window, parent=None):
         super().__init__(parent)
+        self.main_window = main_window
         self.scene = SequenceScene(self)
+        self.scene.main_window = main_window
         self.setScene(self.scene)
         self.scene.scene_changed.connect(self.scene_changed)
         self.scene.add_new_node_requested.connect(self.on_add_new_node)
