@@ -12,6 +12,7 @@ This module contains all the components required for the sequencer UI, including
 import logging
 import asyncio
 import uuid
+import copy
 from enum import Enum
 from PyQt6.QtWidgets import (QGraphicsView, QGraphicsScene, QGraphicsObject, QGraphicsTextItem,
                              QStyleOptionGraphicsItem, QWidget, QGraphicsPathItem, QStyle,
@@ -1343,11 +1344,20 @@ class SequenceEngine(QObject):
     async def execute_python_script_node(self, node_data):
         """
         Executes a 'Python Script' node.
-        The script is executed in a sandboxed scope with access to:
-        - 'INPUT': The value from the data input socket.
-        - 'output': A variable to assign the node's result to.
-        - 'get_global(name)': A function to get a global variable's value.
-        - 'set_global(name, value)': A function to set a global variable's value.
+        
+        The script is executed in a restricted scope with access to an 'INPUT'
+        variable and any defined global variables. Global variables that are
+        dictionaries containing a 'current_value' key are "unwrapped" so the script
+        can access their actual value directly. The script can modify these unwrapped
+        variables, and the changes will be written back to the 'current_value' key.
+        The script can also set an 'output' variable, which is then
+        placed in the execution context.
+        
+        Args:
+            node_data (dict): The data for the Python script node.
+        
+        Returns:
+            tuple: A tuple containing the script's output value and a success boolean.
         """
         try:
             config = node_data['config']
@@ -1357,30 +1367,49 @@ class SequenceEngine(QObject):
 
             input_value = await self.resolve_argument_value(node_data, self.current_sequence_name)
 
-            # --- New, safer execution scope ---
-            def get_global(name):
-                """Gets a value from the project's global variables."""
-                return self.global_variables.get(name)
+            # Use a deepcopy to prevent script from modifying nested structures of non-unwrapped variables
+            script_globals = copy.deepcopy(self.global_variables)
+            unwrapped_keys = set()  # To track which keys were unwrapped for write-back
 
-            def set_global(name, value):
-                """Sets a value in the project's global variables."""
-                if name in ['__builtins__', 'INPUT', 'output', 'get_global', 'set_global']:
-                    raise NameError(f"'{name}' is a reserved name and cannot be set as a global variable.")
-                self.global_variables[name] = value
-                self.global_variable_changed.emit(name, value)
-                logging.info(f"Python script set global variable '{name}' to: {value}")
+            # --- Smart Unwrapping Logic ---
+            # Make global variables with a 'current_value' directly accessible by their name
+            for key, value in self.global_variables.items():
+                if isinstance(value, dict) and 'current_value' in value:
+                    script_globals[key] = value['current_value']
+                    unwrapped_keys.add(key)
 
-            script_scope = {
-                'INPUT': input_value,
-                'output': None,
-                'get_global': get_global,
-                'set_global': set_global
+            script_globals['INPUT'] = input_value
+            script_globals['output'] = None
+            # Provide a safe subset of builtins to the script's execution environment
+            safe_builtins = {
+                'abs': abs, 'all': all, 'any': any, 'bool': bool, 'dict': dict,
+                'float': float, 'int': int, 'len': len, 'list': list, 'max': max,
+                'min': min, 'pow': pow, 'range': range, 'round': round, 'set': set,
+                'str': str, 'sum': sum, 'tuple': tuple, 'True': True, 'False': False,
+                'None': None
             }
-            # --- End of new scope ---
+            script_globals['__builtins__'] = safe_builtins
 
-            exec(script, script_scope)
+            logging.debug(f"Executing Python script with globals: {script_globals}")
+            exec(script, script_globals)
 
-            output_value = script_scope.get('output')
+            # --- Intelligent Write-Back Logic ---
+            for key, new_value in script_globals.items():
+                if key in ['__builtins__', 'INPUT', 'output']:
+                    continue
+
+                # If the key was an unwrapped global variable, update its 'current_value'
+                if key in unwrapped_keys:
+                    original_var_dict = self.global_variables.get(key)
+                    if isinstance(original_var_dict, dict):
+                        # Check if the value actually changed before updating and emitting
+                        if original_var_dict.get('current_value') != new_value:
+                            original_var_dict['current_value'] = new_value
+                            # Emit the new primitive value for UI updates
+                            self.global_variable_changed.emit(key, new_value)
+                            logging.info(f"Script updated global variable '{key}' to {new_value}")
+
+            output_value = script_globals.get('output')
             self.execution_context[node_data['uuid']] = output_value
             logging.info(f"Python script node executed. Output: {output_value}")
             return output_value, True
